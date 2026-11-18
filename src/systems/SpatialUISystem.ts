@@ -1,7 +1,9 @@
 import {
   Entity,
+  LevelTag,
   PokeInteractable,
   RayInteractable,
+  Transform,
   UIKitMLAsset,
   VisibilityState,
   createSystem,
@@ -76,9 +78,11 @@ export interface SpatialUIActionHandler {
   onAdjustUiScale: (delta: number) => void;
   onResetUiScale: () => void;
   onPause: () => void;
-  onModalPrimary: () => void;
-  onModalSecondary: () => void;
-  onModalTertiary: () => void;
+  onModalResume: () => void;
+  onModalNextLevel: () => void;
+  onModalPlayAgain: () => void;
+  onModalEditSetup: () => void;
+  onModalMainMenu: () => void;
   // Custom Game / Workshop actions
   onWorkshopAddSegment: (kind: WorkshopModuleKind) => void;
   onWorkshopSelectSegOffset: (delta: number) => void;
@@ -150,6 +154,8 @@ export class SpatialUISystem extends createSystem({}) {
   private xrLastError: string | null = null;
   private xrEnabledFeaturesNote: string | null = null;
 
+  private attachedToWorldRoot = false;
+  private worldRootEntity: Entity | null = null;
   private _anchor = new THREE.Vector3();
   private _offset = new THREE.Vector3();
   private _quatY = new THREE.Quaternion();
@@ -224,6 +230,24 @@ export class SpatialUISystem extends createSystem({}) {
 
   setActionHandler(handler: SpatialUIActionHandler): void {
     this.handler = handler;
+  }
+
+  attachPanelsToWorldRoot(worldRootEntity: Entity): void {
+    this.worldRootEntity = worldRootEntity;
+    const rootObj = worldRootEntity.object3D;
+    for (const panel of this.panels.values()) {
+      if (rootObj && panel.asset.parent !== rootObj) {
+        rootObj.add(panel.asset);
+      }
+      if (panel.entity.hasComponent(LevelTag)) {
+        panel.entity.removeComponent(LevelTag);
+      }
+      if (panel.entity.hasComponent(Transform)) {
+        panel.entity.setValue(Transform, 'parent', worldRootEntity);
+      }
+    }
+    this.attachedToWorldRoot = true;
+    this.syncLayout();
   }
 
   /**
@@ -383,17 +407,23 @@ export class SpatialUISystem extends createSystem({}) {
     );
 
     // Modal (Pause & Post-Game Results)
-    this.bindClick('modal', 'modal-primary-btn', () =>
-      this.handler?.onModalPrimary()
+    this.bindClick('modal', 'modal-resume-btn', () =>
+      this.handler?.onModalResume()
     );
-    this.bindClick('modal', 'modal-secondary-btn', () =>
-      this.handler?.onModalSecondary()
+    this.bindClick('modal', 'modal-next-btn', () =>
+      this.handler?.onModalNextLevel()
+    );
+    this.bindClick('modal', 'modal-play-again-btn', () =>
+      this.handler?.onModalPlayAgain()
+    );
+    this.bindClick('modal', 'modal-edit-setup-btn', () =>
+      this.handler?.onModalEditSetup()
     );
     this.bindClick('modal', 'modal-settings-btn', () =>
       this.handler?.onOpenSettings()
     );
-    this.bindClick('modal', 'modal-tertiary-btn', () =>
-      this.handler?.onModalTertiary()
+    this.bindClick('modal', 'modal-main-menu-btn', () =>
+      this.handler?.onModalMainMenu()
     );
 
     // Onboarding
@@ -702,17 +732,26 @@ export class SpatialUISystem extends createSystem({}) {
   }
 
   /**
-   * Synchronizes spatial panels in front of the table while keeping panel Y
-   * anchored to the calibrated baseline (`uiAnchorY`) rather than `arenaOrigin.y`.
-   * This ensures pressing Higher / Lower raises or lowers only the bowling table,
-   * never shifting UI buttons away or under a stationary hand/ray.
+   * Synchronizes spatial panels inside the unified persistent RolloxWorldRoot.
+   * Because all panels live at fixed local offsets under RolloxWorldRoot, their
+   * positions remain completely locked relative to the world-anchored bowling
+   * alley across gameplay, results, level changes, and headset movement.
    */
   syncLayout(
-    arenaOrigin: THREE.Vector3,
-    arenaYawRad: number,
-    uiAnchorY = arenaOrigin.y
+    arenaOrigin?: THREE.Vector3,
+    arenaYawRad = 0,
+    uiAnchorY?: number
   ): void {
-    this._anchor.set(arenaOrigin.x, uiAnchorY, arenaOrigin.z);
+    if (this.attachedToWorldRoot || !arenaOrigin) {
+      for (const panel of this.panels.values()) {
+        panel.asset.position.copy(panel.offset);
+        panel.asset.rotation.set(panel.pitchRad, panel.yawRad, 0, 'YXZ');
+      }
+      return;
+    }
+
+    const baseY = uiAnchorY ?? arenaOrigin.y;
+    this._anchor.set(arenaOrigin.x, baseY, arenaOrigin.z);
     this._quatY.setFromAxisAngle(this._yAxis, arenaYawRad);
     for (const panel of this.panels.values()) {
       this._offset.copy(panel.offset).applyQuaternion(this._quatY).add(this._anchor);
@@ -999,10 +1038,20 @@ export class SpatialUISystem extends createSystem({}) {
   updateModal(
     mode: ModalMode,
     summary?: ScoreSummary,
-    levelIndex = 0
+    levelIndex = 0,
+    unlockedLevelIndex = 0
   ): void {
     if (mode === 'PAUSE') {
       this.setText('modal', 'modal-eyebrow', 'GAME PAUSED');
+      this.setText(
+        'modal',
+        'modal-level-name',
+        summary
+          ? summary.isCustomWorkshop
+            ? `Custom Game: ${summary.levelName}`
+            : `Level ${levelIndex + 1}: ${summary.levelName}`
+          : `Level ${levelIndex + 1}`
+      );
       this.setText(
         'modal',
         'modal-title',
@@ -1031,31 +1080,45 @@ export class SpatialUISystem extends createSystem({}) {
         'modal-best-val',
         summary ? `${summary.shotsUsed} / ${summary.maxShots}` : '0 / 3'
       );
-      this.setText('modal', 'modal-primary-label', 'Resume Game');
+
+      this.setProps('modal', 'modal-resume-btn', {display: 'flex'});
+      this.setProps('modal', 'modal-next-btn', {display: 'none'});
+      this.setProps('modal', 'modal-play-again-btn', {
+        display: 'flex',
+        backgroundColor: '#1e293b',
+      });
       this.setText(
         'modal',
-        'modal-secondary-label',
+        'modal-play-again-label',
         summary?.isCustomWorkshop ? 'Restart Custom Game' : 'Restart Level'
       );
-      this.setText(
-        'modal',
-        'modal-tertiary-label',
-        summary?.isCustomWorkshop ? 'Edit Custom Game' : 'Main Menu'
-      );
+      this.setProps('modal', 'modal-edit-setup-btn', {
+        display: summary?.isCustomWorkshop ? 'flex' : 'none',
+        backgroundColor: '#1e293b',
+      });
+      this.setText('modal', 'modal-edit-setup-label', 'Edit Setup');
       this.setProps('modal', 'modal-settings-btn', {display: 'flex'});
+      this.setProps('modal', 'modal-main-menu-btn', {
+        display: 'flex',
+        backgroundColor: '#1e293b',
+      });
+      this.setText('modal', 'modal-main-menu-label', 'Main Menu');
       return;
     }
 
     if (!summary) return;
+    this.setProps('modal', 'modal-resume-btn', {display: 'none'});
     this.setProps('modal', 'modal-settings-btn', {display: 'none'});
 
     const pres = buildResultsPresentation({
       summary,
       levelIndex,
       totalLevels: CAMPAIGN_LEVELS.length,
+      unlockedLevelIndex,
     });
 
     this.setText('modal', 'modal-eyebrow', pres.eyebrow);
+    this.setText('modal', 'modal-level-name', pres.levelLabel);
     this.setText('modal', 'modal-title', pres.title);
     this.setText(
       'modal',
@@ -1097,9 +1160,29 @@ export class SpatialUISystem extends createSystem({}) {
       );
     }
 
-    this.setText('modal', 'modal-primary-label', pres.primaryLabel);
-    this.setText('modal', 'modal-secondary-label', pres.secondaryLabel);
-    this.setText('modal', 'modal-tertiary-label', pres.tertiaryLabel);
+    this.setProps('modal', 'modal-next-btn', {
+      display: pres.showNextLevel ? 'flex' : 'none',
+      backgroundColor: '#0284c7',
+    });
+    this.setText('modal', 'modal-next-label', pres.nextLevelLabel);
+
+    this.setProps('modal', 'modal-play-again-btn', {
+      display: pres.showPlayAgain ? 'flex' : 'none',
+      backgroundColor: pres.showNextLevel ? '#1e293b' : '#0284c7',
+    });
+    this.setText('modal', 'modal-play-again-label', pres.playAgainLabel);
+
+    this.setProps('modal', 'modal-edit-setup-btn', {
+      display: pres.showEditSetup ? 'flex' : 'none',
+      backgroundColor: '#1e293b',
+    });
+    this.setText('modal', 'modal-edit-setup-label', pres.editSetupLabel);
+
+    this.setProps('modal', 'modal-main-menu-btn', {
+      display: pres.showMainMenu ? 'flex' : 'none',
+      backgroundColor: '#1e293b',
+    });
+    this.setText('modal', 'modal-main-menu-label', pres.mainMenuLabel);
   }
 
   showCallout(text: string, colorHex = '#fde047', durationMs = 2100): void {

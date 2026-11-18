@@ -84,6 +84,8 @@ export class BowlingWorld {
   private arenaOffset = new THREE.Vector3();
   private arenaYaw = 0;
   private arenaQuat = new THREE.Quaternion();
+  private arenaInvQuat = new THREE.Quaternion();
+  private _localQuat = new THREE.Quaternion();
   private callbacks?: CollisionCallback;
   private ballBodyDynamic = false;
 
@@ -171,6 +173,7 @@ export class BowlingWorld {
     this.arenaOffset.copy(offset);
     this.arenaYaw = yawRad;
     this.arenaQuat.setFromAxisAngle(_up, yawRad);
+    this.arenaInvQuat.copy(this.arenaQuat).invert();
   }
 
   getArenaOffset(): THREE.Vector3 {
@@ -179,6 +182,25 @@ export class BowlingWorld {
 
   private localToWorldVec(lx: number, ly: number, lz: number, out = new THREE.Vector3()): THREE.Vector3 {
     return out.set(lx, ly, lz).applyQuaternion(this.arenaQuat).add(this.arenaOffset);
+  }
+
+  private syncMeshFromWorldPose(
+    mesh: THREE.Object3D,
+    wx: number,
+    wy: number,
+    wz: number,
+    qx: number,
+    qy: number,
+    qz: number,
+    qw: number
+  ): void {
+    _tmpVec
+      .set(wx, wy, wz)
+      .sub(this.arenaOffset)
+      .applyQuaternion(this.arenaInvQuat);
+    mesh.position.copy(_tmpVec);
+    this._localQuat.set(qx, qy, qz, qw).premultiply(this.arenaInvQuat);
+    mesh.quaternion.copy(this._localQuat);
   }
 
   buildLevelPhysics(
@@ -335,6 +357,11 @@ export class BowlingWorld {
       this.colliderTags.set(bellyCol.handle, 'pin');
       this.colliderTags.set(neckCol.handle, 'pin');
 
+      if (mesh) {
+        mesh.position.set(p.x, p.y + 0.0595, p.z);
+        mesh.quaternion.identity();
+      }
+
       this.pins.push({
         index: i,
         body: pinBody,
@@ -459,8 +486,8 @@ export class BowlingWorld {
         );
         this.colliderTags.set(col.handle, 'movingGate');
         if (mesh) {
-          mesh.position.copy(baseWorldPos);
-          mesh.quaternion.copy(_quat);
+          mesh.position.set(obs.x, obs.y, obs.z);
+          mesh.rotation.set(0, obs.yawY ?? 0, 0, 'YXZ');
         }
         if (visual?.gateBar) {
           visual.gateBar.position.y = 0.0725;
@@ -502,8 +529,8 @@ export class BowlingWorld {
         );
         this.colliderTags.set(col.handle, 'slidingBarrier');
         if (mesh) {
-          mesh.position.copy(baseWorldPos);
-          mesh.quaternion.copy(_quat);
+          mesh.position.set(obs.x, obs.y, obs.z);
+          mesh.rotation.set(0, obs.yawY ?? 0, 0, 'YXZ');
         }
         this.obstacles.push({
           spec: obs,
@@ -516,9 +543,8 @@ export class BowlingWorld {
         });
       }
       if (mesh && (obs.kind === 'dwarf' || obs.kind === 'bumper')) {
-        const obsYaw = this.arenaYaw + (obs.yawY ?? 0);
-        mesh.position.copy(baseWorldPos);
-        mesh.rotation.y = obsYaw;
+        mesh.position.set(obs.x, obs.y, obs.z);
+        mesh.rotation.set(0, obs.yawY ?? 0, 0, 'YXZ');
       }
     }
   }
@@ -612,8 +638,8 @@ export class BowlingWorld {
   resetBallToPedestal(localPos: THREE.Vector3): void {
     this.createOrResetBall(localPos);
     if (this.ballMesh) {
-      this.localToWorldVec(localPos.x, localPos.y, localPos.z, this.ballMesh.position);
-      this.ballMesh.quaternion.copy(this.arenaQuat);
+      this.ballMesh.position.copy(localPos);
+      this.ballMesh.quaternion.identity();
     }
   }
 
@@ -684,8 +710,15 @@ export class BowlingWorld {
         });
         if (obs.mesh) {
           const dirSign = Math.cos(obs.phase) >= 0 ? 1 : -1;
-          obs.mesh.position.set(nx, ny, nz);
-          obs.mesh.rotation.y = obsYaw + dirSign * 0.28;
+          const localObsYaw = obs.spec.yawY ?? 0;
+          const localAxisX = Math.cos(localObsYaw);
+          const localAxisZ = -Math.sin(localObsYaw);
+          obs.mesh.position.set(
+            obs.spec.x + localAxisX * offsetX,
+            obs.spec.y,
+            obs.spec.z + localAxisZ * offsetX
+          );
+          obs.mesh.rotation.set(0, localObsYaw + dirSign * 0.28, 0, 'YXZ');
         }
       } else if (obs.spec.kind === 'bumper') {
         const angle = obsYaw + obs.phase;
@@ -698,8 +731,8 @@ export class BowlingWorld {
           w: _quat.w,
         });
         if (obs.mesh) {
-          obs.mesh.position.copy(obs.baseWorldPos);
-          obs.mesh.quaternion.copy(_quat);
+          obs.mesh.position.set(obs.spec.x, obs.spec.y, obs.spec.z);
+          obs.mesh.rotation.set(0, (obs.spec.yawY ?? 0) + obs.phase, 0, 'YXZ');
         }
       } else if (obs.spec.kind === 'movingGate') {
         // Predictable sinusoidal portcullis rise & lower
@@ -720,8 +753,8 @@ export class BowlingWorld {
           w: _quat.w,
         });
         if (obs.mesh) {
-          obs.mesh.position.copy(obs.baseWorldPos);
-          obs.mesh.quaternion.copy(_quat);
+          obs.mesh.position.set(obs.spec.x, obs.spec.y, obs.spec.z);
+          obs.mesh.rotation.set(0, obs.spec.yawY ?? 0, 0, 'YXZ');
         }
         if (obs.gateBarMesh) {
           obs.gateBarMesh.position.y = 0.025 + lift;
@@ -747,8 +780,15 @@ export class BowlingWorld {
           w: _quat.w,
         });
         if (obs.mesh) {
-          obs.mesh.position.set(nx, obs.baseWorldPos.y, nz);
-          obs.mesh.quaternion.copy(_quat);
+          const localObsYaw = obs.spec.yawY ?? 0;
+          const localAxisX = Math.cos(localObsYaw);
+          const localAxisZ = -Math.sin(localObsYaw);
+          obs.mesh.position.set(
+            obs.spec.x + localAxisX * offsetX,
+            obs.spec.y,
+            obs.spec.z + localAxisZ * offsetX
+          );
+          obs.mesh.rotation.set(0, localObsYaw, 0, 'YXZ');
         }
       }
     }
@@ -762,16 +802,14 @@ export class BowlingWorld {
     if (this.ballBody && this.ballMesh && isBallDynamicSync && this.ballBodyDynamic) {
       const t = this.ballBody.translation();
       const r = this.ballBody.rotation();
-      this.ballMesh.position.set(t.x, t.y, t.z);
-      this.ballMesh.quaternion.set(r.x, r.y, r.z, r.w);
+      this.syncMeshFromWorldPose(this.ballMesh, t.x, t.y, t.z, r.x, r.y, r.z, r.w);
     }
 
     for (const pin of this.pins) {
       if (!pin.body.isEnabled() || !pin.mesh) continue;
       const t = pin.body.translation();
       const r = pin.body.rotation();
-      pin.mesh.position.set(t.x, t.y, t.z);
-      pin.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      this.syncMeshFromWorldPose(pin.mesh, t.x, t.y, t.z, r.x, r.y, r.z, r.w);
     }
 
     if (this.eventQueue && this.callbacks) {

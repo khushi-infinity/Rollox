@@ -1,12 +1,12 @@
 <style>
   .modal-root {
     flex-direction: column;
-    width: 500px;
+    width: 520px;
     padding-top: 22px;
     padding-bottom: 22px;
     padding-left: 24px;
     padding-right: 24px;
-    gap: 12px;
+    gap: 10px;
     background-color: #0f172a;
     border-color: #fde047;
     border-width: 2px;
@@ -19,15 +19,21 @@
     letter-spacing: 1.4px;
     text-align: center;
   }
+  .modal-level-name {
+    color: #f8fafc;
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+  }
   .modal-title {
     color: #fde047;
-    font-size: 30px;
+    font-size: 28px;
     font-weight: 700;
     text-align: center;
   }
   .modal-stars {
     color: #fbbf24;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
     text-align: center;
   }
@@ -49,8 +55,8 @@
   }
   .modal-summary {
     color: #e2e8f0;
-    font-size: 15px;
-    line-height: 21px;
+    font-size: 14px;
+    line-height: 20px;
     text-align: center;
   }
   .stats-grid {
@@ -78,7 +84,7 @@
   }
   .btn-col {
     flex-direction: column;
-    gap: 10px;
+    gap: 9px;
   }
   .full-btn {
     width: 100%;
@@ -88,9 +94,10 @@
   }
 </style>
 <Panel class="modal-root">
-  <span id="modal-eyebrow" class="modal-eyebrow">RESULTS</span>
+  <span id="modal-eyebrow" class="modal-eyebrow">ROUND COMPLETE</span>
+  <span id="modal-level-name" class="modal-level-name">Level 1: Meadow Straight</span>
   <span id="modal-title" class="modal-title">STRIKE!</span>
-  <span id="modal-stars" class="modal-stars">*** (3 / 3)</span>
+  <span id="modal-stars" class="modal-stars">*** (3 / 3 STARS)</span>
   <div id="modal-banner-box" class="banner-box">
     <span id="modal-banner-text" class="banner-text">Level cleared - next challenge unlocked!</span>
   </div>
@@ -105,28 +112,36 @@
       <span class="stat-lbl">FINAL SCORE</span>
       <span id="modal-score-val" class="stat-val">150</span>
     </div>
-    <div class="stat-box">
+    <div id="modal-best-box" class="stat-box">
       <span id="modal-best-label" class="stat-lbl">BEST SCORE</span>
       <span id="modal-best-val" class="stat-val">150</span>
     </div>
   </div>
 
   <div class="btn-col">
-    <Button id="modal-primary-btn" class="full-btn" style="background-color: #0284c7;">
+    <Button id="modal-resume-btn" class="full-btn" style="background-color: #0284c7;">
       <ButtonIcon><Play></Play></ButtonIcon>
-      <ButtonLabel id="modal-primary-label">Next Level</ButtonLabel>
+      <ButtonLabel>Resume Game</ButtonLabel>
     </Button>
-    <Button id="modal-secondary-btn" class="full-btn">
+    <Button id="modal-next-btn" class="full-btn" style="background-color: #0284c7;">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel id="modal-next-label">Next Level</ButtonLabel>
+    </Button>
+    <Button id="modal-play-again-btn" class="full-btn">
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
-      <ButtonLabel id="modal-secondary-label">Play Again</ButtonLabel>
+      <ButtonLabel id="modal-play-again-label">Play Again</ButtonLabel>
+    </Button>
+    <Button id="modal-edit-setup-btn" class="full-btn">
+      <ButtonIcon><Wrench></Wrench></ButtonIcon>
+      <ButtonLabel id="modal-edit-setup-label">Edit Setup</ButtonLabel>
     </Button>
     <Button id="modal-settings-btn" class="full-btn">
       <ButtonIcon><Settings></Settings></ButtonIcon>
       <ButtonLabel>Settings &amp; Menu Size</ButtonLabel>
     </Button>
-    <Button id="modal-tertiary-btn" class="full-btn">
+    <Button id="modal-main-menu-btn" class="full-btn">
       <ButtonIcon><List></List></ButtonIcon>
-      <ButtonLabel id="modal-tertiary-label">Main Menu</ButtonLabel>
+      <ButtonLabel id="modal-main-menu-label">Main Menu</ButtonLabel>
     </Button>
   </div>
 </Panel>

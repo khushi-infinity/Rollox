@@ -2,6 +2,7 @@ import {
   Entity,
   Hovered,
   RayInteractable,
+  Transform,
   VisibilityState,
   createSystem,
 } from '@iwsdk/core';
@@ -69,6 +70,8 @@ interface TrackedInputSample {
 export class AimingSystem extends createSystem({}) {
   private callbacks: AimingCallbacks | null = null;
 
+  private tableEntity: Entity | null = null;
+  private tableGroup: THREE.Group | null = null;
   private rayHandleEntity: Entity | null = null;
   private rayHitMesh!: THREE.Mesh;
   private ballEntity: Entity | null = null;
@@ -166,8 +169,52 @@ export class AimingSystem extends createSystem({}) {
     this.callbacks = callbacks;
   }
 
+  setArenaHierarchy(tableEntity: Entity, tableGroup: THREE.Group): void {
+    this.tableEntity = tableEntity;
+    this.tableGroup = tableGroup;
+
+    if (this.guidesGroup.parent !== tableGroup) {
+      tableGroup.add(this.guidesGroup);
+    }
+    this.guidesGroup.position.set(0, 0, 0);
+    this.guidesGroup.quaternion.identity();
+
+    if (this.rayHandleEntity) {
+      if (this.rayHandleEntity.object3D && this.rayHandleEntity.object3D.parent !== tableGroup) {
+        tableGroup.add(this.rayHandleEntity.object3D);
+      }
+      if (this.rayHandleEntity.hasComponent(Transform)) {
+        this.rayHandleEntity.setValue(Transform, 'parent', tableEntity);
+      }
+    }
+
+    if (this.ballEntity) {
+      if (this.ballEntity.object3D && this.ballEntity.object3D.parent !== tableGroup) {
+        tableGroup.add(this.ballEntity.object3D);
+      }
+      if (this.ballEntity.hasComponent(Transform)) {
+        this.ballEntity.setValue(Transform, 'parent', tableEntity);
+      }
+    }
+
+    if (this.grabState === 'IDLE' || this.grabState === 'HOVER') {
+      this.parkHandleAtPedestal();
+    }
+  }
+
   setBallEntity(entity: Entity | null): void {
     this.ballEntity = entity;
+    if (entity && this.tableEntity && this.tableGroup) {
+      if (entity.object3D && entity.object3D.parent !== this.tableGroup) {
+        this.tableGroup.add(entity.object3D);
+      }
+      if (entity.hasComponent(Transform)) {
+        entity.setValue(Transform, 'parent', this.tableEntity);
+      }
+      if (this.grabState === 'IDLE' || this.grabState === 'HOVER') {
+        this.parkHandleAtPedestal();
+      }
+    }
   }
 
   setArenaTransform(origin: THREE.Vector3, yawRad: number): void {
@@ -183,8 +230,13 @@ export class AimingSystem extends createSystem({}) {
 
     this._tablePlane.set(this._yAxis, -this.pedestalWorld.y);
 
-    this.guidesGroup.position.copy(this.arenaOrigin);
-    this.guidesGroup.quaternion.copy(this.arenaQuat);
+    if (this.tableGroup) {
+      this.guidesGroup.position.set(0, 0, 0);
+      this.guidesGroup.quaternion.identity();
+    } else {
+      this.guidesGroup.position.copy(this.arenaOrigin);
+      this.guidesGroup.quaternion.copy(this.arenaQuat);
+    }
 
     if (this.grabState === 'IDLE' || this.grabState === 'HOVER') {
       this.parkHandleAtPedestal();
@@ -240,8 +292,13 @@ export class AimingSystem extends createSystem({}) {
 
   private createVisualGuides(): void {
     this.guidesGroup.name = 'RolloxAimingGuides';
-    this.guidesGroup.position.copy(this.arenaOrigin);
-    this.guidesGroup.quaternion.copy(this.arenaQuat);
+    if (this.tableGroup) {
+      this.guidesGroup.position.set(0, 0, 0);
+      this.guidesGroup.quaternion.identity();
+    } else {
+      this.guidesGroup.position.copy(this.arenaOrigin);
+      this.guidesGroup.quaternion.copy(this.arenaQuat);
+    }
 
     // Pre-grab hover halo on launch tee
     const haloGeo = new THREE.RingGeometry(0.048, 0.068, 36);
@@ -326,7 +383,11 @@ export class AimingSystem extends createSystem({}) {
       this.trajDotGeo,
       this.trajDotMat
     );
-    this.scene.add(this.guidesGroup);
+    if (this.tableGroup) {
+      this.tableGroup.add(this.guidesGroup);
+    } else {
+      this.scene.add(this.guidesGroup);
+    }
   }
 
   private setupMouseListeners(): void {
@@ -406,13 +467,19 @@ export class AimingSystem extends createSystem({}) {
   }
 
   private parkHandleAtPedestal(): void {
+    const useLocal = this.tableGroup !== null;
     if (this.rayHandleEntity?.object3D) {
-      this.rayHandleEntity.object3D.position.copy(this.pedestalWorld);
+      this.rayHandleEntity.object3D.position.copy(
+        useLocal ? this.pedestalLocal : this.pedestalWorld
+      );
       this.rayHandleEntity.object3D.quaternion.identity();
     }
     this.lastBallWorldPos.copy(this.pedestalWorld);
     if (this.ballEntity?.object3D) {
-      this.ballEntity.object3D.position.copy(this.pedestalWorld);
+      this.ballEntity.object3D.position.copy(
+        useLocal ? this.pedestalLocal : this.pedestalWorld
+      );
+      this.ballEntity.object3D.quaternion.identity();
     }
   }
 
@@ -667,7 +734,15 @@ export class AimingSystem extends createSystem({}) {
         this.lastBallWorldPos.copy(this._ballWorld);
 
         if (this.ballEntity?.object3D) {
-          this.ballEntity.object3D.position.copy(this._ballWorld);
+          if (this.tableGroup) {
+            this.ballEntity.object3D.position.set(
+              stepRes.ballLocal.x,
+              stepRes.ballLocal.y,
+              stepRes.ballLocal.z
+            );
+          } else {
+            this.ballEntity.object3D.position.copy(this._ballWorld);
+          }
         }
         physicsSystem?.bowlingWorld.setBallKinematicPosition(this._ballWorld);
 

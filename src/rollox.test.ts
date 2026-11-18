@@ -65,6 +65,23 @@ describe('RolloxStateMachine', () => {
     expect(fresh.transitionGame('RESULT')).toBe(false);
     expect(fresh.state).toBe('LOADING');
   });
+
+  it('supports rapid grab/release from ONBOARDING/READY and Play Again from Custom Game RESULT', () => {
+    const sm = new RolloxStateMachine();
+    sm.transitionGame('MAIN_MENU');
+    sm.transitionGame('ONBOARDING');
+    expect(sm.transitionGame('BALL_IN_MOTION')).toBe(true);
+    expect(sm.transitionGame('SETTLING')).toBe(true);
+    expect(sm.transitionGame('READY')).toBe(true);
+    expect(sm.transitionGame('BALL_IN_MOTION')).toBe(true);
+    expect(sm.transitionGame('SETTLING')).toBe(true);
+    expect(sm.transitionGame('RESULT')).toBe(true);
+
+    // Custom Game Play Again restarts directly into WORKSHOP_TEST
+    expect(sm.transitionGame('WORKSHOP_TEST')).toBe(true);
+    expect(sm.transitionGame('RESULT')).toBe(true);
+    expect(sm.transitionGame('WORKSHOP')).toBe(true);
+  });
 });
 
 describe('Launch Physics & Curves', () => {
@@ -338,19 +355,50 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
       summary: lvl1Summary,
       levelIndex: 0,
       totalLevels: 5,
+      unlockedLevelIndex: 1,
     });
     expect(midPres.hasNextLevel).toBe(true);
+    expect(midPres.showNextLevel).toBe(true);
+    expect(midPres.showPlayAgain).toBe(true);
+    expect(midPres.showEditSetup).toBe(false);
+    expect(midPres.showMainMenu).toBe(true);
+    expect(midPres.levelLabel).toBe('Level 1: Meadow Straight');
+    expect(midPres.nextLevelLabel).toBe('Next Level');
+    expect(midPres.playAgainLabel).toBe('Play Again');
+    expect(midPres.mainMenuLabel).toBe('Main Menu');
     expect(midPres.primaryLabel).toBe('Next Level');
     expect(midPres.secondaryLabel).toBe('Play Again');
     expect(midPres.tertiaryLabel).toBe('Main Menu');
+
+    const failedLockedPres = buildResultsPresentation({
+      summary: {...lvl1Summary, stars: 0, pinsKnocked: 1, callout: 'TRY AGAIN'},
+      levelIndex: 0,
+      totalLevels: 5,
+      unlockedLevelIndex: 0,
+    });
+    expect(failedLockedPres.showNextLevel).toBe(false);
+    expect(failedLockedPres.showPlayAgain).toBe(true);
+    expect(failedLockedPres.showMainMenu).toBe(true);
+
+    const failedAlreadyUnlockedPres = buildResultsPresentation({
+      summary: {...lvl1Summary, stars: 0, pinsKnocked: 1, callout: 'TRY AGAIN'},
+      levelIndex: 0,
+      totalLevels: 5,
+      unlockedLevelIndex: 1,
+    });
+    expect(failedAlreadyUnlockedPres.showNextLevel).toBe(true);
 
     const finalPres = buildResultsPresentation({
       summary: {...lvl1Summary, levelName: 'Crown Gauntlet'},
       levelIndex: 4,
       totalLevels: 5,
+      unlockedLevelIndex: 4,
     });
     expect(finalPres.isCampaignComplete).toBe(true);
     expect(finalPres.hasNextLevel).toBe(false);
+    expect(finalPres.showNextLevel).toBe(false);
+    expect(finalPres.showPlayAgain).toBe(true);
+    expect(finalPres.showMainMenu).toBe(true);
     expect(finalPres.bannerText).toContain('CAMPAIGN COMPLETE');
     expect(finalPres.primaryLabel).toBe('Play Again');
 
@@ -359,8 +407,14 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
       levelIndex: 0,
       totalLevels: 5,
     });
+    expect(customPres.eyebrow).toBe('CUSTOM GAME COMPLETE');
+    expect(customPres.levelLabel).toBe('Custom Game: Meadow Straight');
+    expect(customPres.showPlayAgain).toBe(true);
+    expect(customPres.showNextLevel).toBe(false);
+    expect(customPres.showEditSetup).toBe(true);
+    expect(customPres.showMainMenu).toBe(true);
     expect(customPres.primaryLabel).toBe('Play Again');
-    expect(customPres.secondaryLabel).toBe('Edit Custom Game');
+    expect(customPres.secondaryLabel).toBe('Edit Setup');
     expect(customPres.tertiaryLabel).toBe('Main Menu');
   });
 });

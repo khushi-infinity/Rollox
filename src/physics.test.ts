@@ -202,7 +202,14 @@ describe('Rapier3D BowlingWorld Physics Audit', () => {
       accentColor: '#38bdf8',
     };
 
+    const tableRoot = new THREE.Group();
+    tableRoot.position.copy(arenaOrigin);
+    tableRoot.rotation.set(0, arenaYaw, 0);
+
     const obsVisuals = makeObstacleVisuals(testLevel);
+    for (const v of obsVisuals.values()) {
+      if (v.root) tableRoot.add(v.root);
+    }
     const pinMeshes = Array.from({length: 6}, () => new THREE.Group());
     bw.buildLevelPhysics(testLevel, new THREE.Group(), pinMeshes, obsVisuals);
 
@@ -210,18 +217,27 @@ describe('Rapier3D BowlingWorld Physics Audit', () => {
     // Actually move speed=0 won't lower the gate; set phase just past -PI/2 so bar is lowered (y = 0.025)
     bw.obstacles[0].phase = -Math.PI / 2;
     stepSeconds(bw, 0.4);
+    tableRoot.updateMatrixWorld(true);
 
-    // Check mesh-to-physics sync for all 4 obstacles
+    // Check mesh-to-physics sync for all 4 obstacles in world space through tableRoot
     const [gate, dwarf, bumper, barrier] = bw.obstacles;
     expect(gate.gateBarMesh?.position.y).toBeCloseTo(
       gate.body.translation().y - arenaOrigin.y,
       3
     );
-    expect(dwarf.mesh?.position.x).toBeCloseTo(dwarf.body.translation().x, 4);
-    expect(dwarf.mesh?.position.z).toBeCloseTo(dwarf.body.translation().z, 4);
-    expect(barrier.mesh?.position.x).toBeCloseTo(barrier.body.translation().x, 4);
-    expect(barrier.mesh?.position.z).toBeCloseTo(barrier.body.translation().z, 4);
-    expect(Math.abs(bumper.mesh!.quaternion.y - bumper.body.rotation().y)).toBeLessThan(0.01);
+    const dwarfWorldPos = new THREE.Vector3();
+    dwarf.mesh?.getWorldPosition(dwarfWorldPos);
+    expect(dwarfWorldPos.x).toBeCloseTo(dwarf.body.translation().x, 4);
+    expect(dwarfWorldPos.z).toBeCloseTo(dwarf.body.translation().z, 4);
+
+    const barrierWorldPos = new THREE.Vector3();
+    barrier.mesh?.getWorldPosition(barrierWorldPos);
+    expect(barrierWorldPos.x).toBeCloseTo(barrier.body.translation().x, 4);
+    expect(barrierWorldPos.z).toBeCloseTo(barrier.body.translation().z, 4);
+
+    const bumperWorldQuat = new THREE.Quaternion();
+    bumper.mesh?.getWorldQuaternion(bumperWorldQuat);
+    expect(Math.abs(bumperWorldQuat.y - bumper.body.rotation().y)).toBeLessThan(0.01);
 
     // Fire high-speed ball directly at lowered gate along rotated arenaYaw; CCD must deflect, not tunnel
     const forward = new THREE.Vector3(0, 0, -3.8).applyAxisAngle(

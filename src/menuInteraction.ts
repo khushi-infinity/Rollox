@@ -111,11 +111,20 @@ export function getCampaignLevelCardState(
 
 export interface ResultsPresentation {
   eyebrow: string;
+  levelLabel: string;
   title: string;
   bannerText: string;
   showBanner: boolean;
   hasNextLevel: boolean;
   isCampaignComplete: boolean;
+  showPlayAgain: boolean;
+  showNextLevel: boolean;
+  showEditSetup: boolean;
+  showMainMenu: boolean;
+  playAgainLabel: string;
+  nextLevelLabel: string;
+  editSetupLabel: string;
+  mainMenuLabel: string;
   primaryLabel: string;
   secondaryLabel: string;
   tertiaryLabel: string;
@@ -125,18 +134,28 @@ export function buildResultsPresentation(params: {
   summary: ScoreSummary;
   levelIndex: number;
   totalLevels: number;
+  unlockedLevelIndex?: number;
 }): ResultsPresentation {
-  const {summary, levelIndex, totalLevels} = params;
+  const {summary, levelIndex, totalLevels, unlockedLevelIndex = 0} = params;
   if (summary.isCustomWorkshop) {
     return {
       eyebrow: 'CUSTOM GAME COMPLETE',
+      levelLabel: `Custom Game: ${summary.levelName}`,
       title: summary.callout,
       bannerText: `Custom lane finished in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}.`,
       showBanner: true,
       hasNextLevel: false,
       isCampaignComplete: false,
+      showPlayAgain: true,
+      showNextLevel: false,
+      showEditSetup: true,
+      showMainMenu: true,
+      playAgainLabel: 'Play Again',
+      nextLevelLabel: 'Next Level',
+      editSetupLabel: 'Edit Setup',
+      mainMenuLabel: 'Main Menu',
       primaryLabel: 'Play Again',
-      secondaryLabel: 'Edit Custom Game',
+      secondaryLabel: 'Edit Setup',
       tertiaryLabel: 'Main Menu',
     };
   }
@@ -144,16 +163,26 @@ export function buildResultsPresentation(params: {
   const cleared = summary.stars > 0;
   const isFinalLevel = levelIndex >= totalLevels - 1;
   const isCampaignComplete = cleared && isFinalLevel;
-  const hasNextLevel = cleared && !isFinalLevel;
+  const hasNextLevel =
+    !isFinalLevel && (cleared || unlockedLevelIndex > levelIndex);
 
   if (isCampaignComplete) {
     return {
-      eyebrow: `${summary.levelName.toUpperCase()} - FINAL LEVEL`,
+      eyebrow: 'ROUND COMPLETE',
+      levelLabel: `Level ${levelIndex + 1}: ${summary.levelName}`,
       title: summary.callout,
       bannerText: 'CAMPAIGN COMPLETE! You conquered every Rollox alley!',
       showBanner: true,
       hasNextLevel: false,
       isCampaignComplete: true,
+      showPlayAgain: true,
+      showNextLevel: false,
+      showEditSetup: false,
+      showMainMenu: true,
+      playAgainLabel: 'Play Again',
+      nextLevelLabel: 'Next Level',
+      editSetupLabel: 'Edit Setup',
+      mainMenuLabel: 'Main Menu',
       primaryLabel: 'Play Again',
       secondaryLabel: 'Level Select',
       tertiaryLabel: 'Main Menu',
@@ -161,16 +190,25 @@ export function buildResultsPresentation(params: {
   }
 
   return {
-    eyebrow: summary.levelName.toUpperCase(),
+    eyebrow: 'ROUND COMPLETE',
+    levelLabel: `Level ${levelIndex + 1}: ${summary.levelName}`,
     title: summary.callout,
     bannerText: cleared
       ? 'Level cleared - next challenge unlocked!'
       : 'Knock at least 30% of the pins to unlock the next level.',
-    showBanner: cleared,
+    showBanner: true,
     hasNextLevel,
     isCampaignComplete: false,
+    showPlayAgain: true,
+    showNextLevel: hasNextLevel,
+    showEditSetup: false,
+    showMainMenu: true,
+    playAgainLabel: 'Play Again',
+    nextLevelLabel: 'Next Level',
+    editSetupLabel: 'Edit Setup',
+    mainMenuLabel: 'Main Menu',
     primaryLabel: hasNextLevel ? 'Next Level' : 'Play Again',
-    secondaryLabel: hasNextLevel ? 'Play Again' : 'Level Select',
+    secondaryLabel: hasNextLevel ? 'Play Again' : 'Main Menu',
     tertiaryLabel: 'Main Menu',
   };
 }
