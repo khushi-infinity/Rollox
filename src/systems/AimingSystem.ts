@@ -201,7 +201,7 @@ export class AimingSystem extends createSystem({}) {
       .addComponent(BallRayHandle)
       .addComponent(RayInteractable)
       .addComponent(DistanceGrabbable, {
-        movementMode: MovementMode.MoveAtSource,
+        movementMode: MovementMode.MoveFromTarget,
         translate: true,
         rotate: false,
         scale: false,

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 2,
+  "sessionId": "cceab6cf-2f8c-46b3-94b6-d8e953439bc8",
+  "workspaceRoot": "/app/applet",
+  "pid": 1347,
+  "processStart": "f78f4dc9-b100-4e6a-abff-861a632f4db1:567165",
+  "port": 3000,
+  "localUrl": "http://localhost:3000/",
+  "networkUrls": [
+    "http://169.254.8.1:3000/",
+    "http://169.254.9.1:3000/",
+    "http://169.254.169.1:3000/"
+  ],
+  "browser": {
+    "lifecycle": {
+      "state": "failed",
+      "policy": "eager",
+      "sessionId": "cceab6cf-2f8c-46b3-94b6-d8e953439bc8",
+      "browserEpoch": 2,
+      "revision": 6,
+      "stateEnteredAt": "2026-11-18T06:24:19.527Z",
+      "lastObservedAt": "2026-11-18T06:24:19.527Z",
+      "failures": 2,
+      "cleanupConfirmed": true,
+      "attemptLimit": 3,
+      "historyTruncated": false,
+      "retryEligible": true,
+      "nextAction": "A managed-target command or runtime_recover can launch the browser.",
+      "history": [
+        {
+          "revision": 1,
+          "state": "launching",
+          "at": "2026-11-18T06:21:54.679Z",
+          "reason": "launch"
+        },
+        {
+          "revision": 2,
+          "state": "launching",
+          "at": "2026-11-18T06:21:54.681Z",
+          "reason": "prepared"
+        },
+        {
+          "revision": 3,
+          "state": "failed",
+          "at": "2026-11-18T06:21:55.064Z",
+          "reason": "browserType.launchPersistentContext: Target page, context or browser has been closed\nBrowser logs:\n\n╔════════════════════════════════════════════════════════════════════════════════════════════════╗\n║ Looks like you launched a headed browser without having a XServer running.                     ║\n║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║\n║                                                                                                ║\n║ <3 Playwright Team                                                                             ║\n╚════════════════════════════════════════════════════════════════════════════════════════════════╝\nCall log:\n  - <launching> /ms-playwright/chromium-1255/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,AvoidCorsURLLoaderRestartOnRedirect,TcpPortRandomizationWin,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,PreconnectToSearch,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface,SkipListAccountsWithoutGaiaCookies --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --enable-unsafe-swiftshader --edge-skip-compat-layer-relaunch --disable-stack-profiler --disable-infobars --disable-sync --do-not-de-elevate --no-sandbox --enable-webgl --ignore-certificate-errors --use-gl=angle --use-angle=swiftshader --disable-background-timer-throttling --disable-renderer-backgrounding --app=data:text/html, --user-data-dir=/tmp/.iwsdk-browser-0/e5703f61ca903f4702b4c8ff20a637c6b11ccc616039441e093a6328acdefe9d --remote-debugging-pipe\n  - <launched> pid=1364\n  - [pid=1364][err] [1364:1364:1118/062154.949005:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY\n  - [pid=1364][err] [1364:1364:1118/062154.949078:ERROR:ui/aura/env.cc:262] The platform failed to initialize.  Exiting.\n  - [pid=1364][err] [1364:1380:1118/062154.951340:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n  - [pid=1364][err] [1364:1380:1118/062154.951391:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n  - [pid=1364][err] [1118/062154.980813:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1364][err] [1118/062154.984698:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1364] <gracefully close start>\n  - [pid=1364] <kill>\n  - [pid=1364] <will force kill>\n  - [pid=1364] <process did exit: exitCode=1, signal=null>\n  - [pid=1364] starting temporary directories cleanup\n  - [pid=1364] finished temporary directories cleanup\n  - [pid=1364] <gracefully close end>\n"
+        },
+        {
+          "revision": 4,
+          "state": "launching",
+          "at": "2026-11-18T06:24:19.224Z",
+          "reason": "launch"
+        },
+        {
+          "revision": 5,
+          "state": "launching",
+          "at": "2026-11-18T06:24:19.226Z",
+          "reason": "prepared"
+        },
+        {
+          "revision": 6,
+          "state": "failed",
+          "at": "2026-11-18T06:24:19.527Z",
+          "reason": "browserType.launchPersistentContext: Target page, context or browser has been closed\nBrowser logs:\n\n╔════════════════════════════════════════════════════════════════════════════════════════════════╗\n║ Looks like you launched a headed browser without having a XServer running.                     ║\n║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║\n║                                                                                                ║\n║ <3 Playwright Team                                                                             ║\n╚════════════════════════════════════════════════════════════════════════════════════════════════╝\nCall log:\n  - <launching> /ms-playwright/chromium-1255/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,AvoidCorsURLLoaderRestartOnRedirect,TcpPortRandomizationWin,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,PreconnectToSearch,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface,SkipListAccountsWithoutGaiaCookies --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --enable-unsafe-swiftshader --edge-skip-compat-layer-relaunch --disable-stack-profiler --disable-infobars --disable-sync --do-not-de-elevate --no-sandbox --enable-webgl --ignore-certificate-errors --use-gl=angle --use-angle=swiftshader --disable-background-timer-throttling --disable-renderer-backgrounding --app=data:text/html, --user-data-dir=/tmp/.iwsdk-browser-0/e5703f61ca903f4702b4c8ff20a637c6b11ccc616039441e093a6328acdefe9d --remote-debugging-pipe\n  - <launched> pid=1927\n  - [pid=1927][err] [1927:1943:1118/062419.449163:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n  - [pid=1927][err] [1927:1943:1118/062419.449397:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n  - [pid=1927][err] [1927:1940:1118/062419.449972:ERROR:base/files/file_path_watcher_inotify.cc:925] Failed to read /proc/sys/fs/inotify/max_user_watches\n  - [pid=1927][err] [1927:1927:1118/062419.463073:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY\n  - [pid=1927][err] [1927:1927:1118/062419.463101:ERROR:ui/aura/env.cc:262] The platform failed to initialize.  Exiting.\n  - [pid=1927] <gracefully close start>\n  - [pid=1927] <kill>\n  - [pid=1927] <will force kill>\n  - [pid=1927][err] [1118/062419.489548:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927][err] [1118/062419.491739:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927] <process did exit: exitCode=1, signal=null>\n  - [pid=1927] starting temporary directories cleanup\n  - [pid=1927] finished temporary directories cleanup\n  - [pid=1927] <gracefully close end>\n"
+        }
+      ],
+      "attemptId": "1ff7a809-f632-4377-8dcd-6766471066a1",
+      "issue": "browserType.launchPersistentContext: Target page, context or browser has been closed\nBrowser logs:\n\n╔════════════════════════════════════════════════════════════════════════════════════════════════╗\n║ Looks like you launched a headed browser without having a XServer running.                     ║\n║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║\n║                                                                                                ║\n║ <3 Playwright Team                                                                             ║\n╚════════════════════════════════════════════════════════════════════════════════════════════════╝\nCall log:\n  - <launching> /ms-playwright/chromium-1255/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,AvoidCorsURLLoaderRestartOnRedirect,TcpPortRandomizationWin,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,PreconnectToSearch,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface,SkipListAccountsWithoutGaiaCookies --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --enable-unsafe-swiftshader --edge-skip-compat-layer-relaunch --disable-stack-profiler --disable-infobars --disable-sync --do-not-de-elevate --no-sandbox --enable-webgl --ignore-certificate-errors --use-gl=angle --use-angle=swiftshader --disable-background-timer-throttling --disable-renderer-backgrounding --app=data:text/html, --user-data-dir=/tmp/.iwsdk-browser-0/e5703f61ca903f4702b4c8ff20a637c6b11ccc616039441e093a6328acdefe9d --remote-debugging-pipe\n  - <launched> pid=1927\n  - [pid=1927][err] [1927:1943:1118/062419.449163:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n  - [pid=1927][err] [1927:1943:1118/062419.449397:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n  - [pid=1927][err] [1927:1940:1118/062419.449972:ERROR:base/files/file_path_watcher_inotify.cc:925] Failed to read /proc/sys/fs/inotify/max_user_watches\n  - [pid=1927][err] [1927:1927:1118/062419.463073:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY\n  - [pid=1927][err] [1927:1927:1118/062419.463101:ERROR:ui/aura/env.cc:262] The platform failed to initialize.  Exiting.\n  - [pid=1927] <gracefully close start>\n  - [pid=1927] <kill>\n  - [pid=1927] <will force kill>\n  - [pid=1927][err] [1118/062419.489548:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927][err] [1118/062419.491739:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927] <process did exit: exitCode=1, signal=null>\n  - [pid=1927] starting temporary directories cleanup\n  - [pid=1927] finished temporary directories cleanup\n  - [pid=1927] <gracefully close end>\n",
+      "issueAt": "2026-11-18T06:24:19.527Z",
+      "issueCause": "permission_denied"
+    },
+    "status": "launch_failed",
+    "clients": [],
+    "connected": false,
+    "commandReady": false,
+    "connectedClientCount": 0,
+    "lastTransitionAt": "2026-11-18T06:24:19.527Z",
+    "audioMuted": false,
+    "lastError": {
+      "cause": "permission_denied",
+      "message": "browserType.launchPersistentContext: Target page, context or browser has been closed\nBrowser logs:\n\n╔════════════════════════════════════════════════════════════════════════════════════════════════╗\n║ Looks like you launched a headed browser without having a XServer running.                     ║\n║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║\n║                                                                                                ║\n║ <3 Playwright Team                                                                             ║\n╚════════════════════════════════════════════════════════════════════════════════════════════════╝\nCall log:\n  - <launching> /ms-playwright/chromium-1255/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,AvoidCorsURLLoaderRestartOnRedirect,TcpPortRandomizationWin,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,PreconnectToSearch,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface,SkipListAccountsWithoutGaiaCookies --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --enable-unsafe-swiftshader --edge-skip-compat-layer-relaunch --disable-stack-profiler --disable-infobars --disable-sync --do-not-de-elevate --no-sandbox --enable-webgl --ignore-certificate-errors --use-gl=angle --use-angle=swiftshader --disable-background-timer-throttling --disable-renderer-backgrounding --app=data:text/html, --user-data-dir=/tmp/.iwsdk-browser-0/e5703f61ca903f4702b4c8ff20a637c6b11ccc616039441e093a6328acdefe9d --remote-debugging-pipe\n  - <launched> pid=1927\n  - [pid=1927][err] [1927:1943:1118/062419.449163:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory\n  - [pid=1927][err] [1927:1943:1118/062419.449397:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n  - [pid=1927][err] [1927:1940:1118/062419.449972:ERROR:base/files/file_path_watcher_inotify.cc:925] Failed to read /proc/sys/fs/inotify/max_user_watches\n  - [pid=1927][err] [1927:1927:1118/062419.463073:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY\n  - [pid=1927][err] [1927:1927:1118/062419.463101:ERROR:ui/aura/env.cc:262] The platform failed to initialize.  Exiting.\n  - [pid=1927] <gracefully close start>\n  - [pid=1927] <kill>\n  - [pid=1927] <will force kill>\n  - [pid=1927][err] [1118/062419.489548:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927][err] [1118/062419.491739:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:182] incorrect payload size 0\n  - [pid=1927] <process did exit: exitCode=1, signal=null>\n  - [pid=1927] starting temporary directories cleanup\n  - [pid=1927] finished temporary directories cleanup\n  - [pid=1927] <gracefully close end>\n",
+      "at": "2026-11-18T06:24:19.527Z"
+    }
+  },
+  "browserAutomation": {
+    "configured": false,
+    "enabled": false,
+    "protocol": "cdp"
+  },
+  "registeredAt": "2026-11-18T06:21:54.674Z",
+  "updatedAt": "2026-11-18T06:24:19.537Z"
+}

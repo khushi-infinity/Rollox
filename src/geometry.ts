@@ -395,11 +395,17 @@ export function createPinDeckBackdrop(
   deckPos: {x: number; y: number; z: number},
   accentColor: string,
   assets: ProceduralAssets,
-  disposables: Array<{dispose: () => void}>
+  disposables: Array<{dispose: () => void}>,
+  yawY = 0
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = 'Pin Deck Fantasy Arch';
-  group.position.set(deckPos.x, deckPos.y, deckPos.z - 0.24);
+  group.position.set(
+    deckPos.x - Math.sin(yawY) * 0.24,
+    deckPos.y,
+    deckPos.z - Math.cos(yawY) * 0.24
+  );
+  group.rotation.y = yawY;
 
   const archMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(accentColor),

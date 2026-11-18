@@ -43,6 +43,7 @@ import {
   repositionWorkshopObstacle,
   repositionWorkshopSegment,
   rotateWorkshopSegment,
+  syncWorkshopIdSeed,
   validateWorkshopLayout,
 } from '../levels';
 import {RolloxStateMachine} from '../stateMachine';
@@ -113,11 +114,14 @@ export class GameFlowSystem
   private shotsLeft = CAMPAIGN_LEVELS[0].maxShots;
   private shotsUsed = 0;
   private pinsKnocked = 0;
+  private pinsKnockedBeforeShot = 0;
   private totalPins = 10;
   private levelScore = 0;
   private totalScore = 0;
   private lastSummary: ScoreSummary | undefined;
   private subScreenReturnState: 'MAIN_MENU' | 'PAUSED' = 'MAIN_MENU';
+  private isSubScreenOpen = false;
+  private workshopTestPhase: 'READY' | 'AIMING' | 'BALL_IN_MOTION' | 'SETTLING' = 'READY';
 
   private onboardingStep: 'pinch' | 'pull' | 'aim' | 'release' = 'pinch';
   private shotStartTime = 0;
@@ -167,7 +171,9 @@ export class GameFlowSystem
         this.sm.state === 'READY' ||
         this.sm.state === 'AIMING' ||
         this.sm.state === 'ONBOARDING' ||
-        this.sm.state === 'WORKSHOP_TEST',
+        (this.sm.state === 'WORKSHOP_TEST' &&
+          (this.workshopTestPhase === 'READY' ||
+            this.workshopTestPhase === 'AIMING')),
       onGrabStateChanged: (grabState) => {
         const ui = this.uiSystem;
         if (!ui) return;
@@ -179,6 +185,8 @@ export class GameFlowSystem
         this.physicsSystem?.audio.playGrab();
         if (this.sm.state === 'READY') {
           this.sm.transitionGame('AIMING');
+        } else if (this.sm.state === 'WORKSHOP_TEST') {
+          this.workshopTestPhase = 'AIMING';
         }
         if (this.sm.state === 'ONBOARDING' && this.onboardingStep === 'pinch') {
           this.onboardingStep = 'pull';
@@ -210,6 +218,8 @@ export class GameFlowSystem
       onShotCancelled: () => {
         if (this.sm.state === 'AIMING') {
           this.sm.transitionGame('READY');
+        } else if (this.sm.state === 'WORKSHOP_TEST') {
+          this.workshopTestPhase = 'READY';
         }
         this.uiSystem?.updateHudPower(0, 'IDLE', false);
       },
@@ -269,11 +279,29 @@ export class GameFlowSystem
       }
       const pRaw = window.localStorage.getItem(PROGRESS_STORAGE_KEY);
       if (pRaw) {
-        this.progress = {...DEFAULT_PROGRESS, ...JSON.parse(pRaw)};
+        const pParsed = JSON.parse(pRaw) as Partial<CampaignProgress>;
+        this.progress = {
+          ...DEFAULT_PROGRESS,
+          ...pParsed,
+          completedLevels: Array.isArray(pParsed.completedLevels)
+            ? pParsed.completedLevels
+            : [],
+          bestScores: pParsed.bestScores ?? {},
+          bestStars: pParsed.bestStars ?? {},
+        };
       }
       const wRaw = window.localStorage.getItem(WORKSHOP_STORAGE_KEY);
       if (wRaw) {
-        this.workshopLayout = JSON.parse(wRaw) as WorkshopLayout;
+        const wParsed = JSON.parse(wRaw) as Partial<WorkshopLayout>;
+        if (wParsed && Array.isArray(wParsed.segments) && wParsed.segments.length > 0) {
+          this.workshopLayout = {
+            ...createDefaultWorkshopLayout(),
+            ...wParsed,
+            segments: wParsed.segments,
+            obstacles: Array.isArray(wParsed.obstacles) ? wParsed.obstacles : [],
+          };
+          syncWorkshopIdSeed(this.workshopLayout);
+        }
       }
     } catch {
       // Ignore malformed storage entries
@@ -363,7 +391,9 @@ export class GameFlowSystem
       } else if (k === 'm') {
         this.onToggleMute();
       } else if (k === 'p' || e.key === 'Escape') {
-        if (this.sm.state === 'PAUSED') {
+        if (this.isSubScreenOpen) {
+          this.onCloseSubScreen();
+        } else if (this.sm.state === 'PAUSED') {
           this.onModalPrimary();
         } else if (
           this.sm.state === 'READY' ||
@@ -378,7 +408,11 @@ export class GameFlowSystem
           this.onBackToMenu();
         }
       } else if (e.code === 'Space') {
-        if (this.sm.state === 'READY' || this.sm.state === 'WORKSHOP_TEST') {
+        if (
+          this.sm.state === 'READY' ||
+          (this.sm.state === 'WORKSHOP_TEST' &&
+            this.workshopTestPhase === 'READY')
+        ) {
           this.onResetBall();
         }
       }
@@ -426,6 +460,7 @@ export class GameFlowSystem
     this.shotsLeft = config.maxShots;
     this.shotsUsed = 0;
     this.pinsKnocked = 0;
+    this.pinsKnockedBeforeShot = 0;
     this.levelScore = 0;
   }
 
@@ -464,20 +499,14 @@ export class GameFlowSystem
       cfg.pinDeck,
       cfg.accentColor,
       this.assets,
-      this.levelDisposables
+      this.levelDisposables,
+      cfg.pinDeckYaw ?? 0
     );
     this.arenaGroup.add(arch);
 
-    // 3. Pin Meshes (placed in world coords in arenaRoot? No — physics updates world position directly,
-    // so parent pin meshes to scene or add into arenaGroup? Wait: BowlingWorld sets pin.mesh.position directly
-    // in WORLD coordinates! So pins & obstacles MUST be added as children of a world-origin container OR
-    // keep them in this.scene via dynamicGroup! Wait — let's create a dedicated world-space dynamicGroup inside arenaGroup? NO! Inside this.scene!)
+    // 3. Pin Meshes (placed in world-space group under scene because BowlingWorld drives world transforms)
     const dynamicWorldGroup = new THREE.Group();
     dynamicWorldGroup.name = 'RolloxDynamicEntities';
-    this.arenaGroup.add(dynamicWorldGroup);
-    // Transform dynamicWorldGroup back to world space identity OR add pin/obstacle meshes to this.scene
-    // Simpler and exact: attach world-synced objects directly to a world group tracked in levelDisposables!
-    this.arenaGroup.remove(dynamicWorldGroup);
     this.scene.add(dynamicWorldGroup);
     this.levelDisposables.push({
       dispose: () => {
@@ -485,7 +514,11 @@ export class GameFlowSystem
       },
     });
 
-    const placements = generatePinFormation(cfg.pinFormation, cfg.pinDeck);
+    const placements = generatePinFormation(
+      cfg.pinFormation,
+      cfg.pinDeck,
+      cfg.pinDeckYaw ?? 0
+    );
     this.totalPins = placements.length;
     const pinMeshes: THREE.Object3D[] = [];
     for (let i = 0; i < placements.length; i++) {
@@ -619,6 +652,7 @@ export class GameFlowSystem
     physics.setBallDynamicSync(true);
     physics.setSimulationActive(true);
 
+    this.pinsKnockedBeforeShot = this.pinsKnocked;
     this.shotsUsed += 1;
     this.shotsLeft = Math.max(0, this.shotsLeft - 1);
     this.shotStartTime = performance.now();
@@ -633,7 +667,7 @@ export class GameFlowSystem
     if (this.sm.state !== 'WORKSHOP_TEST') {
       this.sm.transitionGame('BALL_IN_MOTION');
     } else {
-      // Keep WORKSHOP_TEST state while sub-tracking grab/flight
+      this.workshopTestPhase = 'BALL_IN_MOTION';
       this.aimingSystem?.notifyExternalGrabState('IN_FLIGHT');
     }
     this.syncHud();
@@ -645,17 +679,15 @@ export class GameFlowSystem
     const physics = this.physicsSystem;
     if (!physics) return;
 
-    // Periodic ground collider sync if physical height changed subtly
     this.groundSyncTimer += delta;
     if (this.groundSyncTimer > 4 && this.groundMesh) {
       this.groundSyncTimer = 0;
     }
 
-    const currentGrabState = this.aimingSystem?.getGrabState();
     const inTestFlight =
-      state === 'WORKSHOP_TEST' && currentGrabState === 'IN_FLIGHT';
+      state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'BALL_IN_MOTION';
     const inTestSettling =
-      state === 'WORKSHOP_TEST' && currentGrabState === 'SETTLING';
+      state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'SETTLING';
 
     if (state === 'BALL_IN_MOTION' || inTestFlight) {
       const elapsedSec = (performance.now() - this.shotStartTime) / 1000;
@@ -683,6 +715,8 @@ export class GameFlowSystem
         this.settlingTimer = 0;
         if (state === 'BALL_IN_MOTION') {
           this.sm.transitionGame('SETTLING');
+        } else {
+          this.workshopTestPhase = 'SETTLING';
         }
         this.aimingSystem?.notifyExternalGrabState('SETTLING');
         this.uiSystem?.updateHudPower(0, 'SETTLING', false);
@@ -717,8 +751,9 @@ export class GameFlowSystem
       this.arenaOrigin.y - 0.25
     );
     const totalFallen = evalRes.totalFallen;
-    const newlyFallen = Math.max(0, totalFallen - this.pinsKnocked);
+    const newlyFallen = Math.max(0, totalFallen - this.pinsKnockedBeforeShot);
     this.pinsKnocked = totalFallen;
+    this.pinsKnockedBeforeShot = totalFallen;
 
     const outcome = evaluateShotScoring({
       newlyFallen,
@@ -731,14 +766,19 @@ export class GameFlowSystem
     this.totalScore += outcome.shotPoints;
 
     this.uiSystem?.showCallout(outcome.callout, outcome.calloutColor, 2200);
+    const deckBurstPos = this._ballPos
+      .set(
+        this.currentLevelConfig.pinDeck.x,
+        this.currentLevelConfig.pinDeck.y + 0.13,
+        this.currentLevelConfig.pinDeck.z
+      )
+      .applyQuaternion(this._quat.setFromAxisAngle(this._yAxis, this.arenaYaw))
+      .add(this.arenaOrigin);
+
     if (outcome.isStrike) {
       physics.audio.playStrikeFanfare();
       physics.vfx.emitBurst(
-        this._ballPos.set(
-          this.arenaOrigin.x + this.currentLevelConfig.pinDeck.x,
-          this.arenaOrigin.y + this.currentLevelConfig.pinDeck.y + 0.14,
-          this.arenaOrigin.z + this.currentLevelConfig.pinDeck.z
-        ),
+        deckBurstPos,
         34,
         [0xfde047, 0x4ade80, 0x38bdf8, 0xf472b6],
         1.75,
@@ -747,11 +787,7 @@ export class GameFlowSystem
     } else if (outcome.isSpare || outcome.isAllCleared) {
       physics.audio.playSpareChime();
       physics.vfx.emitBurst(
-        this._ballPos.set(
-          this.arenaOrigin.x + this.currentLevelConfig.pinDeck.x,
-          this.arenaOrigin.y + this.currentLevelConfig.pinDeck.y + 0.12,
-          this.arenaOrigin.z + this.currentLevelConfig.pinDeck.z
-        ),
+        deckBurstPos,
         24,
         [0x4ade80, 0xfde047, 0x7dd3fc],
         1.45,
@@ -825,6 +861,8 @@ export class GameFlowSystem
     } else {
       if (!isWorkshopTest) {
         this.sm.transitionGame('READY');
+      } else {
+        this.workshopTestPhase = 'READY';
       }
       this.refreshPanelsVisibility();
       this.uiSystem?.updateHudPower(0, 'IDLE', false);
@@ -882,6 +920,7 @@ export class GameFlowSystem
     this.physicsSystem?.audio.playClick();
     this.subScreenReturnState =
       this.sm.state === 'PAUSED' ? 'PAUSED' : 'MAIN_MENU';
+    this.isSubScreenOpen = true;
     this.uiSystem?.updateSettings(this.settings);
     this.uiSystem?.setVisiblePanels(new Set(['settings']));
   }
@@ -890,11 +929,13 @@ export class GameFlowSystem
     this.physicsSystem?.audio.playClick();
     this.subScreenReturnState =
       this.sm.state === 'PAUSED' ? 'PAUSED' : 'MAIN_MENU';
+    this.isSubScreenOpen = true;
     this.uiSystem?.setVisiblePanels(new Set(['instructions']));
   }
 
   onCloseSubScreen(): void {
     this.physicsSystem?.audio.playClick();
+    this.isSubScreenOpen = false;
     if (this.subScreenReturnState === 'PAUSED') {
       this.sm.transitionGame('PAUSED');
     } else {
@@ -905,6 +946,7 @@ export class GameFlowSystem
 
   onBackToMenu(): void {
     this.physicsSystem?.audio.playClick();
+    this.isSubScreenOpen = false;
     this.sm.transitionGame('MAIN_MENU');
     this.aimingSystem?.forceResetToPedestal();
     this.uiSystem?.updateMainMenu(this.progress);
@@ -945,6 +987,8 @@ export class GameFlowSystem
       this.aimingSystem?.forceResetToPedestal();
       if (this.sm.state !== 'WORKSHOP_TEST') {
         this.sm.transitionGame('READY');
+      } else {
+        this.workshopTestPhase = 'READY';
       }
       this.uiSystem?.updateHudPower(0, 'IDLE', false);
       this.uiSystem?.showCallout('BALL RESET TO TEE', '#7dd3fc', 1100);
@@ -1263,6 +1307,7 @@ export class GameFlowSystem
     this.physicsSystem?.audio.playClick();
     this.currentLevelConfig = compileWorkshopLevel(this.workshopLayout);
     this.resetRoundStats(this.currentLevelConfig);
+    this.workshopTestPhase = 'READY';
     this.sm.transitionGame('WORKSHOP_TEST');
     void this.rebuildCurrentLevel(false, -1);
     this.refreshPanelsVisibility();

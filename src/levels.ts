@@ -134,10 +134,24 @@ export const WORKSHOP_MODULE_CATALOG: Record<
 
 export function generatePinFormation(
   formation: PinFormation,
-  deck: {x: number; y: number; z: number}
+  deck: {x: number; y: number; z: number},
+  yawY = 0
 ): PinPlacement[] {
   const spacingX = 0.074;
   const spacingZ = 0.066;
+  const cosY = Math.cos(yawY);
+  const sinY = Math.sin(yawY);
+  const pushLocal = (
+    list: PinPlacement[],
+    localX: number,
+    localZ: number
+  ): void => {
+    list.push({
+      x: deck.x + localX * cosY + localZ * sinY,
+      y: deck.y,
+      z: deck.z - localX * sinY + localZ * cosY,
+    });
+  };
   const placements: PinPlacement[] = [];
 
   if (formation === 'standard10') {
@@ -146,11 +160,7 @@ export function generatePinFormation(
       for (let col = 0; col < count; col++) {
         const offsetX = (col - (count - 1) / 2) * spacingX;
         const offsetZ = -row * spacingZ;
-        placements.push({
-          x: deck.x + offsetX,
-          y: deck.y,
-          z: deck.z + offsetZ,
-        });
+        pushLocal(placements, offsetX, offsetZ);
       }
     }
     return placements;
@@ -160,11 +170,11 @@ export function generatePinFormation(
     const rows = [1, 2, 3, 2, 1];
     rows.forEach((count, row) => {
       for (let col = 0; col < count; col++) {
-        placements.push({
-          x: deck.x + (col - (count - 1) / 2) * spacingX,
-          y: deck.y,
-          z: deck.z - row * (spacingZ * 0.85),
-        });
+        pushLocal(
+          placements,
+          (col - (count - 1) / 2) * spacingX,
+          -row * (spacingZ * 0.85)
+        );
       }
     });
     return placements;
@@ -182,11 +192,7 @@ export function generatePinFormation(
       [1.4, -2.4],
     ];
     for (const [cx, cz] of coords) {
-      placements.push({
-        x: deck.x + cx * spacingX,
-        y: deck.y,
-        z: deck.z + cz * spacingZ,
-      });
+      pushLocal(placements, cx * spacingX, cz * spacingZ);
     }
     return placements;
   }
@@ -201,11 +207,7 @@ export function generatePinFormation(
     [1.4, -1.9],
   ];
   for (const [cx, cz] of crown) {
-    placements.push({
-      x: deck.x + cx * spacingX,
-      y: deck.y,
-      z: deck.z + cz * spacingZ,
-    });
+    pushLocal(placements, cx * spacingX, cz * spacingZ);
   }
   return placements;
 }
@@ -262,7 +264,7 @@ export const CAMPAIGN_LEVELS: LevelConfig[] = [
     layout: 'zigzag',
     maxShots: 3,
     pinFormation: 'standard10',
-    pinDeck: {x: 0.16, y: 0, z: -1.32},
+    pinDeck: {x: 0.1, y: 0, z: -1.42},
     accentColor: '#38bdf8',
     segments: [
       {
@@ -270,39 +272,39 @@ export const CAMPAIGN_LEVELS: LevelConfig[] = [
         x: 0,
         y: 0,
         z: -0.14,
-        width: 0.44,
+        width: 0.46,
         length: 0.44,
         hasRails: true,
       },
       {
         id: 'zig-left',
-        x: -0.1,
+        x: -0.06,
         y: 0,
-        z: -0.58,
-        width: 0.4,
-        length: 0.56,
-        yawY: 0.34,
+        z: -0.6,
+        width: 0.46,
+        length: 0.5,
+        yawY: 0.24,
         hasRails: true,
         bankSide: 'left',
       },
       {
         id: 'zig-right',
-        x: 0.04,
+        x: 0.02,
         y: 0,
-        z: -1.04,
-        width: 0.42,
-        length: 0.62,
-        yawY: -0.36,
+        z: -1.1,
+        width: 0.52,
+        length: 0.58,
+        yawY: -0.26,
         hasRails: true,
         bankSide: 'right',
       },
       {
         id: 'pin-deck',
-        x: 0.16,
+        x: 0.1,
         y: 0,
-        z: -1.46,
-        width: 0.48,
-        length: 0.44,
+        z: -1.56,
+        width: 0.54,
+        length: 0.46,
         hasRails: true,
       },
     ],
@@ -542,7 +544,7 @@ export function computeLaunchParameters(
     speed,
     velocity: {
       x: nx * speed,
-      y: 0.04,
+      y: 0,
       z: nz * speed,
     },
     spin: {
@@ -644,6 +646,20 @@ export function calculateLevelStars(
 let _workshopIdSeq = 1;
 function nextWorkshopId(prefix: string): string {
   return `${prefix}-${_workshopIdSeq++}`;
+}
+
+/** Advances the workshop ID sequence past any IDs restored from localStorage. */
+export function syncWorkshopIdSeed(layout: WorkshopLayout): void {
+  let maxId = _workshopIdSeq - 1;
+  for (const seg of layout.segments ?? []) {
+    const m = /-(\d+)$/.exec(seg.id);
+    if (m) maxId = Math.max(maxId, Number(m[1]));
+  }
+  for (const obs of layout.obstacles ?? []) {
+    const m = /-(\d+)$/.exec(obs.id);
+    if (m) maxId = Math.max(maxId, Number(m[1]));
+  }
+  _workshopIdSeq = Math.max(_workshopIdSeq, maxId + 1);
 }
 
 export interface SocketPose {
@@ -925,12 +941,14 @@ export function validateWorkshopLayout(
   }
 
   // 4. Obstacle placement validation (must sit reasonably near a lane surface, not overlapping launch pad or pins)
+  const pinCenterX = lastExit.x - Math.sin(lastExit.yawY) * 0.22;
+  const pinCenterZ = lastExit.z - Math.cos(lastExit.yawY) * 0.22;
   for (let i = 0; i < layout.obstacles.length; i++) {
     const obs = layout.obstacles[i];
     if (obs.z > -0.35) {
       errors.push(`Obstacle ${i + 1} sits inside the ball launch zone.`);
     }
-    const distToLastExit = Math.hypot(obs.x - lastExit.x, obs.z - (lastExit.z - 0.18));
+    const distToLastExit = Math.hypot(obs.x - pinCenterX, obs.z - pinCenterZ);
     if (distToLastExit < 0.16) {
       errors.push(`Obstacle ${i + 1} overlaps the bowling pin deck.`);
     }
@@ -1026,6 +1044,7 @@ export function compileWorkshopLevel(layout: WorkshopLayout): LevelConfig {
     maxShots: layout.maxShots,
     pinFormation: layout.pinFormation,
     pinDeck,
+    pinDeckYaw: exitSocket.yawY,
     segments: [launchPad, ...middleSegments, pinDeckSeg],
     obstacles,
     accentColor: '#f59e0b',

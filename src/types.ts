@@ -97,6 +97,8 @@ export interface LevelConfig {
   pinFormation: PinFormation;
   /** Pin deck front-pin reference position relative to arena origin. */
   pinDeck: {x: number; y: number; z: number};
+  /** Optional yaw rotation around Y in radians for rotated workshop pin decks. */
+  pinDeckYaw?: number;
   segments: LaneSegmentSpec[];
   obstacles: ObstacleSpec[];
   accentColor: string;

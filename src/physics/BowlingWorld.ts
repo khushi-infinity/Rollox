@@ -215,22 +215,25 @@ export class BowlingWorld {
       );
       this.staticBodies.push(segBody);
 
+      const deckBevel = 0.004;
       const deckCol = this.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(
-          seg.width / 2,
-          LANE_DECK_THICKNESS / 2,
-          seg.length / 2
+        RAPIER.ColliderDesc.roundCuboid(
+          Math.max(0.02, seg.width / 2 - deckBevel),
+          Math.max(0.004, LANE_DECK_THICKNESS / 2 - deckBevel),
+          Math.max(0.02, seg.length / 2 - deckBevel),
+          deckBevel
         )
           .setTranslation(0, -LANE_DECK_THICKNESS / 2, 0)
           .setFriction(0.14)
-          .setRestitution(0.25),
+          .setRestitution(0.05)
+          .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min),
         segBody
       );
       this.colliderTags.set(deckCol.handle, 'deck');
 
       if (seg.hasRails !== false) {
-        const railH = 0.036;
-        const railW = 0.022;
+        const railH = 0.048;
+        const railW = 0.024;
         for (const side of [-1, 1]) {
           const rx = side * (seg.width / 2 + railW * 0.45);
           const railCol = this.world.createCollider(
@@ -247,20 +250,26 @@ export class BowlingWorld {
     }
 
     // Backstop wall behind the pin deck
+    const pinDeckYaw = level.pinDeckYaw ?? 0;
+    const sinDeck = Math.sin(pinDeckYaw);
+    const cosDeck = Math.cos(pinDeckYaw);
     this.localToWorldVec(
-      level.pinDeck.x,
+      level.pinDeck.x - sinDeck * 0.32,
       level.pinDeck.y + 0.06,
-      level.pinDeck.z - 0.32,
+      level.pinDeck.z - cosDeck * 0.32,
       _tmpVec
     );
+    _euler.set(0, pinDeckYaw, 0, 'YXZ');
+    _quat.setFromEuler(_euler);
+    _quat.premultiply(this.arenaQuat);
     const backBody = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.fixed()
         .setTranslation(_tmpVec.x, _tmpVec.y, _tmpVec.z)
         .setRotation({
-          x: this.arenaQuat.x,
-          y: this.arenaQuat.y,
-          z: this.arenaQuat.z,
-          w: this.arenaQuat.w,
+          x: _quat.x,
+          y: _quat.y,
+          z: _quat.z,
+          w: _quat.w,
         })
     );
     this.staticBodies.push(backBody);
@@ -276,45 +285,60 @@ export class BowlingWorld {
     this.createOrResetBall(new THREE.Vector3(0, BALL_RADIUS, 0));
 
     // 3. Compound-Collider Bowling Pins
-    const placements = generatePinFormation(level.pinFormation, level.pinDeck);
+    const placements = generatePinFormation(
+      level.pinFormation,
+      level.pinDeck,
+      pinDeckYaw
+    );
     for (let i = 0; i < placements.length; i++) {
       const p = placements[i];
       const mesh = pinMeshes[i] ?? null;
-      const worldPos = this.localToWorldVec(p.x, p.y + 0.0605, p.z);
+      const worldPos = this.localToWorldVec(p.x, p.y + 0.0595, p.z);
 
       const pinBody = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
           .setTranslation(worldPos.x, worldPos.y, worldPos.z)
           .setCcdEnabled(true)
-          .setLinearDamping(0.35)
-          .setAngularDamping(0.42)
+          .setLinearDamping(0.22)
+          .setAngularDamping(0.06)
       );
 
       const baseCol = this.world.createCollider(
-        RAPIER.ColliderDesc.cylinder(0.024, 0.0185)
-          .setTranslation(0, -0.036, 0)
-          .setDensity(3.6)
-          .setFriction(0.55)
-          .setRestitution(0.22)
+        RAPIER.ColliderDesc.cylinder(0.018, 0.0135)
+          .setTranslation(0, -0.041, 0)
+          .setDensity(1.8)
+          .setFriction(0.75)
+          .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Max)
+          .setRestitution(0.18)
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+        pinBody
+      );
+      const bellyCol = this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(0.022, 0.0205)
+          .setTranslation(0, -0.01, 0)
+          .setDensity(1.5)
+          .setFriction(0.32)
+          .setRestitution(0.35)
           .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
         pinBody
       );
       const neckCol = this.world.createCollider(
-        RAPIER.ColliderDesc.cylinder(0.044, 0.0135)
-          .setTranslation(0, 0.025, 0)
-          .setDensity(0.95)
-          .setFriction(0.42)
-          .setRestitution(0.32)
+        RAPIER.ColliderDesc.cylinder(0.036, 0.0125)
+          .setTranslation(0, 0.038, 0)
+          .setDensity(1.1)
+          .setFriction(0.28)
+          .setRestitution(0.35)
           .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
         pinBody
       );
       this.colliderTags.set(baseCol.handle, 'pin');
+      this.colliderTags.set(bellyCol.handle, 'pin');
       this.colliderTags.set(neckCol.handle, 'pin');
 
       this.pins.push({
         index: i,
         body: pinBody,
-        colliderHandles: [baseCol.handle, neckCol.handle],
+        colliderHandles: [baseCol.handle, bellyCol.handle, neckCol.handle],
         mesh,
         fallen: false,
         initialPos: worldPos.clone(),
@@ -386,12 +410,46 @@ export class BowlingWorld {
           currentWorldPos: baseWorldPos.clone(),
         });
       } else if (obs.kind === 'movingGate') {
+        const obsYaw = this.arenaYaw + (obs.yawY ?? 0);
+        _euler.set(0, obsYaw, 0, 'YXZ');
+        _quat.setFromEuler(_euler);
+
+        // Fixed stone side-pillar colliders matching visual posts at x = ±0.15
+        const frameBody = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.fixed()
+            .setTranslation(baseWorldPos.x, baseWorldPos.y, baseWorldPos.z)
+            .setRotation({
+              x: _quat.x,
+              y: _quat.y,
+              z: _quat.z,
+              w: _quat.w,
+            })
+        );
+        this.staticBodies.push(frameBody);
+        for (const side of [-1, 1]) {
+          const postCol = this.world.createCollider(
+            RAPIER.ColliderDesc.cuboid(0.013, 0.08, 0.013)
+              .setTranslation(side * 0.15, 0.08, 0)
+              .setRestitution(0.55)
+              .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+            frameBody
+          );
+          this.colliderTags.set(postCol.handle, 'movingGate');
+        }
+
         const body = this.world.createRigidBody(
-          RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-            baseWorldPos.x,
-            baseWorldPos.y + 0.035,
-            baseWorldPos.z
-          )
+          RAPIER.RigidBodyDesc.kinematicPositionBased()
+            .setTranslation(
+              baseWorldPos.x,
+              baseWorldPos.y + 0.0725,
+              baseWorldPos.z
+            )
+            .setRotation({
+              x: _quat.x,
+              y: _quat.y,
+              z: _quat.z,
+              w: _quat.w,
+            })
         );
         const col = this.world.createCollider(
           RAPIER.ColliderDesc.cuboid(0.12, 0.022, 0.014)
@@ -400,6 +458,13 @@ export class BowlingWorld {
           body
         );
         this.colliderTags.set(col.handle, 'movingGate');
+        if (mesh) {
+          mesh.position.copy(baseWorldPos);
+          mesh.quaternion.copy(_quat);
+        }
+        if (visual?.gateBar) {
+          visual.gateBar.position.y = 0.0725;
+        }
         this.obstacles.push({
           spec: obs,
           body,
@@ -412,12 +477,22 @@ export class BowlingWorld {
         });
       } else {
         // slidingBarrier
+        const obsYaw = this.arenaYaw + (obs.yawY ?? 0);
+        _euler.set(0, obsYaw, 0, 'YXZ');
+        _quat.setFromEuler(_euler);
         const body = this.world.createRigidBody(
-          RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-            baseWorldPos.x,
-            baseWorldPos.y + 0.032,
-            baseWorldPos.z
-          )
+          RAPIER.RigidBodyDesc.kinematicPositionBased()
+            .setTranslation(
+              baseWorldPos.x,
+              baseWorldPos.y + 0.032,
+              baseWorldPos.z
+            )
+            .setRotation({
+              x: _quat.x,
+              y: _quat.y,
+              z: _quat.z,
+              w: _quat.w,
+            })
         );
         const col = this.world.createCollider(
           RAPIER.ColliderDesc.cuboid(0.055, 0.032, 0.022)
@@ -426,6 +501,10 @@ export class BowlingWorld {
           body
         );
         this.colliderTags.set(col.handle, 'slidingBarrier');
+        if (mesh) {
+          mesh.position.copy(baseWorldPos);
+          mesh.quaternion.copy(_quat);
+        }
         this.obstacles.push({
           spec: obs,
           body,
@@ -435,6 +514,11 @@ export class BowlingWorld {
           baseWorldPos,
           currentWorldPos: baseWorldPos.clone(),
         });
+      }
+      if (mesh && (obs.kind === 'dwarf' || obs.kind === 'bumper')) {
+        const obsYaw = this.arenaYaw + (obs.yawY ?? 0);
+        mesh.position.copy(baseWorldPos);
+        mesh.rotation.y = obsYaw;
       }
     }
   }
@@ -508,12 +592,12 @@ export class BowlingWorld {
         .setLinvel(linearVelocity.x, linearVelocity.y, linearVelocity.z)
         .setAngvel({x: spinVelocity.x, y: spinVelocity.y, z: spinVelocity.z})
         .setCcdEnabled(true)
-        .setLinearDamping(0.18)
-        .setAngularDamping(0.22)
+        .setLinearDamping(0.12)
+        .setAngularDamping(0.14)
     );
     const col = this.world.createCollider(
       RAPIER.ColliderDesc.ball(BALL_RADIUS)
-        .setDensity(3.4)
+        .setDensity(5.5)
         .setFriction(0.16)
         .setRestitution(0.42)
         .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
@@ -779,9 +863,10 @@ export class BowlingWorld {
       }
 
       const tippedOver = _pinUp.y < 0.68;
+      const droppedOffDeck = t.y < pin.initialPos.y - 0.14;
       const fellOffTable = t.y < minYThreshold;
 
-      if (tippedOver || fellOffTable) {
+      if (tippedOver || droppedOffDeck || fellOffTable) {
         pin.fallen = true;
         newlyFallen++;
         totalFallen++;
