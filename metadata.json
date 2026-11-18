@@ -1,0 +1,6 @@
+{
+  "name": "Rollox",
+  "description": "Hands-first miniature mixed-reality bowling game with real physics, modular lanes, and a custom alley builder.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
