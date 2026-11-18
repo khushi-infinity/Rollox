@@ -1,11 +1,11 @@
 <style>
   .modal-root {
     flex-direction: column;
-    width: 480px;
-    padding-top: 20px;
-    padding-bottom: 20px;
-    padding-left: 22px;
-    padding-right: 22px;
+    width: 500px;
+    padding-top: 22px;
+    padding-bottom: 22px;
+    padding-left: 24px;
+    padding-right: 24px;
     gap: 12px;
     background-color: #0f172a;
     border-color: #fde047;
@@ -27,14 +27,30 @@
   }
   .modal-stars {
     color: #fbbf24;
-    font-size: 24px;
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .banner-box {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #14532d;
+    border-color: #4ade80;
+    border-width: 1px;
+    border-radius: 12px;
+  }
+  .banner-text {
+    color: #ecfdf5;
+    font-size: 14px;
     font-weight: 700;
     text-align: center;
   }
   .modal-summary {
     color: #e2e8f0;
-    font-size: 16px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 21px;
     text-align: center;
   }
   .stats-grid {
@@ -52,41 +68,46 @@
   }
   .stat-lbl {
     color: #94a3b8;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
   }
   .stat-val {
     color: #f8fafc;
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 700;
   }
   .btn-col {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
   .full-btn {
     width: 100%;
+    padding-top: 11px;
+    padding-bottom: 11px;
     justify-content: center;
   }
 </style>
 <Panel class="modal-root">
-  <span id="modal-eyebrow" class="modal-eyebrow">FRAME COMPLETE</span>
+  <span id="modal-eyebrow" class="modal-eyebrow">RESULTS</span>
   <span id="modal-title" class="modal-title">STRIKE!</span>
-  <span id="modal-stars" class="modal-stars">3 / 3 STARS</span>
-  <span id="modal-summary" class="modal-summary">All 10 pins cleared!</span>
+  <span id="modal-stars" class="modal-stars">*** (3 / 3)</span>
+  <div id="modal-banner-box" class="banner-box">
+    <span id="modal-banner-text" class="banner-text">Level cleared - next challenge unlocked!</span>
+  </div>
+  <span id="modal-summary" class="modal-summary">Knocked 10 of 10 pins in 1 shot.</span>
 
   <div class="stats-grid">
     <div class="stat-box">
-      <span class="stat-lbl">PINS CLEARED</span>
+      <span class="stat-lbl">PINS KNOCKED</span>
       <span id="modal-pins-val" class="stat-val">10 / 10</span>
     </div>
     <div class="stat-box">
-      <span class="stat-lbl">LEVEL SCORE</span>
+      <span class="stat-lbl">FINAL SCORE</span>
       <span id="modal-score-val" class="stat-val">150</span>
     </div>
     <div class="stat-box">
-      <span class="stat-lbl">TOTAL SCORE</span>
-      <span id="modal-total-val" class="stat-val">150</span>
+      <span id="modal-best-label" class="stat-lbl">BEST SCORE</span>
+      <span id="modal-best-val" class="stat-val">150</span>
     </div>
   </div>
 
@@ -97,7 +118,7 @@
     </Button>
     <Button id="modal-secondary-btn" class="full-btn">
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
-      <ButtonLabel id="modal-secondary-label">Replay Level</ButtonLabel>
+      <ButtonLabel id="modal-secondary-label">Play Again</ButtonLabel>
     </Button>
     <Button id="modal-settings-btn" class="full-btn">
       <ButtonIcon><Settings></Settings></ButtonIcon>

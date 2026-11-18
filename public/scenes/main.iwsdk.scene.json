@@ -132,8 +132,8 @@
           "offsetZ": -0.48,
           "yawDeg": 0,
           "pitchDeg": -6,
-          "targetWidthM": 0.64,
-          "targetHeightM": 0.54
+          "targetWidthM": 0.68,
+          "targetHeightM": 0.58
         }
       }
     },
@@ -145,7 +145,7 @@
         "asset": "workshop-panel"
       },
       "transform": {
-        "position": [0.58, 1.38, -0.82],
+        "position": [0.58, 1.40, -0.82],
         "rotationDeg": [-6, -24, 0]
       },
       "components": {
@@ -153,12 +153,12 @@
         "SpatialPanelTag": {
           "panelId": "workshop",
           "offsetX": 0.58,
-          "offsetY": 0.44,
+          "offsetY": 0.46,
           "offsetZ": -0.34,
           "yawDeg": -24,
           "pitchDeg": -6,
-          "targetWidthM": 0.62,
-          "targetHeightM": 0.52
+          "targetWidthM": 0.68,
+          "targetHeightM": 0.62
         }
       }
     },
@@ -182,8 +182,8 @@
           "offsetZ": -0.46,
           "yawDeg": 0,
           "pitchDeg": -6,
-          "targetWidthM": 0.62,
-          "targetHeightM": 0.51
+          "targetWidthM": 0.64,
+          "targetHeightM": 0.55
         }
       }
     },
@@ -220,7 +220,7 @@
         "asset": "modal-panel"
       },
       "transform": {
-        "position": [0, 1.36, -0.94],
+        "position": [0, 1.38, -0.94],
         "rotationDeg": [-6, 0, 0]
       },
       "components": {
@@ -228,12 +228,12 @@
         "SpatialPanelTag": {
           "panelId": "modal",
           "offsetX": 0,
-          "offsetY": 0.42,
+          "offsetY": 0.44,
           "offsetZ": -0.46,
           "yawDeg": 0,
           "pitchDeg": -6,
-          "targetWidthM": 0.54,
-          "targetHeightM": 0.49
+          "targetWidthM": 0.56,
+          "targetHeightM": 0.56
         }
       }
     },

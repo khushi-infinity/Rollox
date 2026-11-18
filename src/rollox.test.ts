@@ -12,6 +12,7 @@ import {
   compileWorkshopLevel,
   computeLaunchParameters,
   createDefaultWorkshopLayout,
+  cycleWorkshopDifficulty,
   evaluateShotScoring,
   generatePinFormation,
   getSegmentExitSocket,
@@ -20,11 +21,19 @@ import {
   repositionWorkshopObstacle,
   repositionWorkshopSegment,
   rotateWorkshopSegment,
+  stepWorkshopShots,
   syncWorkshopIdSeed,
   validateWorkshopLayout,
 } from './levels';
+import {
+  MENU_BUTTON_COOLDOWN_MS,
+  MenuInteractionGuard,
+  PANEL_TRANSITION_LOCK_MS,
+  buildResultsPresentation,
+  getCampaignLevelCardState,
+} from './menuInteraction';
 import {RolloxStateMachine} from './stateMachine';
-import type {WorkshopModuleKind} from './types';
+import type {CampaignProgress, ScoreSummary, WorkshopModuleKind} from './types';
 
 describe('RolloxStateMachine', () => {
   it('enforces valid lifecycle transitions and pause/resume restoration', () => {
@@ -160,7 +169,7 @@ describe('Campaign Levels, Pin Formations & Scoring', () => {
   });
 });
 
-describe('Alley Workshop Builder, Edge Cases & Persistence', () => {
+describe('Alley Workshop Builder, Custom Game Settings & Persistence', () => {
   it('supports all 8 module kinds, enforces caps, and rotates/moves/deletes safely', () => {
     const allKinds = Object.keys(WORKSHOP_MODULE_CATALOG) as WorkshopModuleKind[];
     expect(allKinds).toHaveLength(8);
@@ -236,16 +245,122 @@ describe('Alley Workshop Builder, Edge Cases & Persistence', () => {
     expect(segNum).toBeGreaterThan(42);
   });
 
-  it('compiles custom Workshop rails toggle & 4 pin formations into LevelConfig cleanly', () => {
+  it('compiles custom Workshop shots, difficulty speed scaling, rails toggle & pin formations', () => {
     let layout = createDefaultWorkshopLayout();
     layout = {...layout, railsEnabled: false, pinFormation: 'split8'};
+    layout = stepWorkshopShots(layout, 2); // 4 -> 6 clamped
+    layout = stepWorkshopShots(layout, 4);
+    expect(layout.maxShots).toBe(6);
+    layout = stepWorkshopShots(layout, -5);
+    expect(layout.maxShots).toBe(2);
+
+    const normalSpeed = compileWorkshopLevel(layout).obstacles[0].speed!;
+    const fastLayout = cycleWorkshopDifficulty(layout);
+    expect(fastLayout.difficulty).toBe('fast');
+    const fastSpeed = compileWorkshopLevel(fastLayout).obstacles[0].speed!;
+    expect(fastSpeed).toBeGreaterThan(normalSpeed);
+
+    const relaxedLayout = cycleWorkshopDifficulty(fastLayout);
+    expect(relaxedLayout.difficulty).toBe('relaxed');
+    const relaxedSpeed = compileWorkshopLevel(relaxedLayout).obstacles[0].speed!;
+    expect(relaxedSpeed).toBeLessThan(normalSpeed);
+
     const compiled = compileWorkshopLevel(layout);
     expect(compiled.layout).toBe('custom');
+    expect(compiled.maxShots).toBe(2);
     expect(compiled.pinFormation).toBe('split8');
     expect(compiled.segments.every((s) => s.hasRails === false)).toBe(true);
 
     // Moving a segment breaks connectivity
     const broken = repositionWorkshopSegment(layout, layout.segments[0].id, 0.8, 0);
     expect(validateWorkshopLayout(broken).valid).toBe(false);
+  });
+});
+
+describe('Menu Interaction Stability, Level Locks & Results Presentation', () => {
+  it('enforces single-click cooldown and panel transition lock to stop repeated triggers', () => {
+    const guard = new MenuInteractionGuard();
+
+    // First click succeeds; rapid bounce within cooldown rejects
+    expect(guard.canActivate('hud:hud-height-up', 1000)).toBe(true);
+    expect(guard.canActivate('hud:hud-height-up', 1080)).toBe(false);
+    expect(guard.canActivate('hud:hud-height-up', 1000 + MENU_BUTTON_COOLDOWN_MS)).toBe(true);
+
+    // Switching panels locks all buttons briefly to prevent bleed-through clicks
+    guard.notifyPanelTransition(2000);
+    expect(guard.canActivate('level-select:btn-lvl-0', 2050)).toBe(false);
+    expect(
+      guard.canActivate('level-select:btn-lvl-0', 2000 + PANEL_TRANSITION_LOCK_MS)
+    ).toBe(true);
+  });
+
+  it('distinguishes completed, current, unlocked, and locked campaign levels cleanly', () => {
+    const progress: CampaignProgress = {
+      unlockedLevelIndex: 2,
+      completedLevels: [0, 1],
+      bestScores: {'meadow-straight': 150, 'serpent-zigzag': 110},
+      bestStars: {'meadow-straight': 3, 'serpent-zigzag': 2},
+      onboardingCompleted: true,
+    };
+
+    const c0 = getCampaignLevelCardState(0, progress);
+    expect(c0.status).toBe('COMPLETED');
+    expect(c0.unlocked).toBe(true);
+    expect(c0.buttonLabel).toBe('Replay');
+
+    const c2 = getCampaignLevelCardState(2, progress);
+    expect(c2.status).toBe('CURRENT');
+    expect(c2.unlocked).toBe(true);
+    expect(c2.buttonLabel).toBe('Play');
+
+    const c3 = getCampaignLevelCardState(3, progress);
+    expect(c3.status).toBe('LOCKED');
+    expect(c3.unlocked).toBe(false);
+    expect(c3.buttonLabel).toBe('Locked');
+  });
+
+  it('formats Campaign Results, Final Level Completion banner, and Custom Game Results cleanly', () => {
+    const lvl1Summary: ScoreSummary = {
+      levelId: 'meadow-straight',
+      levelName: 'Meadow Straight',
+      pinsKnocked: 10,
+      totalPins: 10,
+      shotsUsed: 1,
+      maxShots: 3,
+      levelScore: 150,
+      bestScore: 150,
+      totalScore: 150,
+      stars: 3,
+      callout: 'STRIKE! +50 BONUS',
+      isCustomWorkshop: false,
+    };
+    const midPres = buildResultsPresentation({
+      summary: lvl1Summary,
+      levelIndex: 0,
+      totalLevels: 5,
+    });
+    expect(midPres.hasNextLevel).toBe(true);
+    expect(midPres.primaryLabel).toBe('Next Level');
+    expect(midPres.secondaryLabel).toBe('Play Again');
+    expect(midPres.tertiaryLabel).toBe('Main Menu');
+
+    const finalPres = buildResultsPresentation({
+      summary: {...lvl1Summary, levelName: 'Crown Gauntlet'},
+      levelIndex: 4,
+      totalLevels: 5,
+    });
+    expect(finalPres.isCampaignComplete).toBe(true);
+    expect(finalPres.hasNextLevel).toBe(false);
+    expect(finalPres.bannerText).toContain('CAMPAIGN COMPLETE');
+    expect(finalPres.primaryLabel).toBe('Play Again');
+
+    const customPres = buildResultsPresentation({
+      summary: {...lvl1Summary, isCustomWorkshop: true},
+      levelIndex: 0,
+      totalLevels: 5,
+    });
+    expect(customPres.primaryLabel).toBe('Play Again');
+    expect(customPres.secondaryLabel).toBe('Edit Custom Game');
+    expect(customPres.tertiaryLabel).toBe('Main Menu');
   });
 });

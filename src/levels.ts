@@ -9,6 +9,7 @@ import type {
   PinPlacement,
   PowerCurveMode,
   ShotOutcome,
+  WorkshopDifficulty,
   WorkshopLayout,
   WorkshopModuleKind,
   WorkshopObstacleNode,
@@ -747,7 +748,45 @@ export function createDefaultWorkshopLayout(): WorkshopLayout {
     pinFormation: 'standard10',
     railsEnabled: true,
     maxShots: 4,
+    difficulty: 'normal',
   };
+}
+
+export const WORKSHOP_DIFFICULTY_MULTIPLIER: Record<WorkshopDifficulty, number> = {
+  relaxed: 0.65,
+  normal: 1.0,
+  fast: 1.4,
+};
+
+export function stepWorkshopShots(
+  layout: WorkshopLayout,
+  delta: number
+): WorkshopLayout {
+  const current = Math.round(layout.maxShots || 4);
+  const next = Math.max(2, Math.min(6, current + delta));
+  return {...layout, maxShots: next};
+}
+
+export function cycleWorkshopDifficulty(
+  layout: WorkshopLayout
+): WorkshopLayout {
+  const order: WorkshopDifficulty[] = ['relaxed', 'normal', 'fast'];
+  const current = layout.difficulty ?? 'normal';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  return {...layout, difficulty: next};
+}
+
+export function formatWorkshopDifficulty(
+  difficulty?: WorkshopDifficulty
+): string {
+  switch (difficulty ?? 'normal') {
+    case 'relaxed':
+      return 'Relaxed';
+    case 'fast':
+      return 'Fast';
+    default:
+      return 'Normal';
+  }
 }
 
 export function appendWorkshopSegment(
@@ -1023,6 +1062,8 @@ export function compileWorkshopLevel(layout: WorkshopLayout): LevelConfig {
     z: exitSocket.z - cosY * 0.14,
   };
 
+  const difficulty = layout.difficulty ?? 'normal';
+  const speedScale = WORKSHOP_DIFFICULTY_MULTIPLIER[difficulty];
   const obstacles: ObstacleSpec[] = layout.obstacles.map((o) => ({
     id: o.id,
     kind: o.kind,
@@ -1031,18 +1072,20 @@ export function compileWorkshopLevel(layout: WorkshopLayout): LevelConfig {
     z: o.z,
     yawY: o.yawY,
     patrolRadius: o.patrolRadius,
-    speed: o.speed,
+    speed: Number(((o.speed || 1.85) * speedScale).toFixed(2)),
     radius: o.radius,
   }));
+
+  const safeShots = Math.max(2, Math.min(6, Math.round(layout.maxShots || 4)));
 
   return {
     id: 'custom-workshop',
     index: -1,
-    name: 'Alley Workshop',
-    subtitle: 'Custom Handcrafted Lane',
-    hint: 'Test your modular lane! Pinch, pull back, aim, and release.',
+    name: 'Custom Alley',
+    subtitle: `${formatWorkshopDifficulty(difficulty)} | ${safeShots} Shots`,
+    hint: 'Pinch, pull back, aim, and release to bowl your custom lane.',
     layout: 'custom',
-    maxShots: layout.maxShots,
+    maxShots: safeShots,
     pinFormation: layout.pinFormation,
     pinDeck,
     pinDeckYaw: exitSocket.yawY,

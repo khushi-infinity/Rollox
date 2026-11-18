@@ -131,12 +131,15 @@ export interface WorkshopObstacleNode {
   radius: number;
 }
 
+export type WorkshopDifficulty = 'relaxed' | 'normal' | 'fast';
+
 export interface WorkshopLayout {
   segments: WorkshopSegmentNode[];
   obstacles: WorkshopObstacleNode[];
   pinFormation: PinFormation;
   railsEnabled: boolean;
   maxShots: number;
+  difficulty?: WorkshopDifficulty;
 }
 
 export interface WorkshopValidationResult {
@@ -180,6 +183,7 @@ export interface ScoreSummary {
   shotsUsed: number;
   maxShots: number;
   levelScore: number;
+  bestScore?: number;
   totalScore: number;
   stars: number;
   callout: string;

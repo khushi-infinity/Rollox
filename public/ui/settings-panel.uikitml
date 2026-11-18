@@ -1,12 +1,12 @@
 <style>
   .settings-root {
     flex-direction: column;
-    width: 520px;
+    width: 540px;
     padding-top: 18px;
     padding-bottom: 18px;
     padding-left: 20px;
     padding-right: 20px;
-    gap: 12px;
+    gap: 11px;
     background-color: #101726;
     border-color: #38bdf8;
     border-width: 2px;
@@ -49,7 +49,7 @@
     color: #fde047;
     font-size: 15px;
     font-weight: 700;
-    width: 68px;
+    width: 64px;
     text-align: center;
   }
 </style>
@@ -99,8 +99,8 @@
   <div class="setting-row">
     <span class="label">Table Height &amp; Distance</span>
     <div class="btn-group">
-      <Button id="set-h-down"><ButtonLabel>H-</ButtonLabel></Button>
-      <Button id="set-h-up"><ButtonLabel>H+</ButtonLabel></Button>
+      <Button id="set-h-down"><ButtonLabel>Lower</ButtonLabel></Button>
+      <Button id="set-h-up"><ButtonLabel>Higher</ButtonLabel></Button>
       <Button id="set-d-near"><ButtonLabel>Closer</ButtonLabel></Button>
       <Button id="set-d-far"><ButtonLabel>Farther</ButtonLabel></Button>
     </div>
@@ -109,11 +109,15 @@
   <div class="btn-group">
     <Button id="set-recenter" style="flex-grow: 1;">
       <ButtonIcon><Crosshair></Crosshair></ButtonIcon>
-      <ButtonLabel>Recenter in Front</ButtonLabel>
+      <ButtonLabel>Recenter Table</ButtonLabel>
+    </Button>
+    <Button id="set-practice-btn" style="flex-grow: 1;">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Gesture Practice</ButtonLabel>
     </Button>
     <Button id="set-reset-place" style="flex-grow: 1;">
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
-      <ButtonLabel>Reset Placement</ButtonLabel>
+      <ButtonLabel>Reset Fit</ButtonLabel>
     </Button>
   </div>
 </Panel>

@@ -38,6 +38,7 @@ import {
   calculateLevelStars,
   compileWorkshopLevel,
   createDefaultWorkshopLayout,
+  cycleWorkshopDifficulty,
   evaluateShotScoring,
   generatePinFormation,
   removeWorkshopObstacle,
@@ -45,6 +46,7 @@ import {
   repositionWorkshopObstacle,
   repositionWorkshopSegment,
   rotateWorkshopSegment,
+  stepWorkshopShots,
   syncWorkshopIdSeed,
   validateWorkshopLayout,
 } from '../levels';
@@ -526,7 +528,10 @@ export class GameFlowSystem
     this.arenaGroup.rotation.set(0, this.arenaYaw, 0);
     this.physicsSystem?.setArenaOrigin(this.arenaOrigin, this.arenaYaw);
     this.aimingSystem?.setArenaTransform(this.arenaOrigin, this.arenaYaw);
-    this.uiSystem?.syncLayout(this.arenaOrigin, this.arenaYaw);
+    // Keep spatial UI height anchored to calibrated baseline so adjusting table
+    // height never moves buttons under a stationary finger or ray pointer.
+    const uiBaseY = this.detectedSurfaceY ?? ARENA_TABLE_Y;
+    this.uiSystem?.syncLayout(this.arenaOrigin, this.arenaYaw, uiBaseY);
   }
 
   private clearLevelVisuals(): void {
@@ -568,8 +573,12 @@ export class GameFlowSystem
     preserveRoundState: boolean,
     highlightSegIndex = -1
   ): Promise<void> {
-    const gen = ++this.levelBuildGen;
     const physics = this.physicsSystem;
+    const preservedFallenIndices = preserveRoundState && physics
+      ? physics.bowlingWorld.pins.filter((p) => p.fallen).map((p) => p.index)
+      : [];
+
+    const gen = ++this.levelBuildGen;
     if (physics) {
       await physics.ensureReady();
     }
@@ -676,6 +685,16 @@ export class GameFlowSystem
       if (this.groundMesh) {
         physics.bowlingWorld.setGroundPlaneCollisionMesh(this.groundMesh);
       }
+    }
+
+    if (physics && preservedFallenIndices.length > 0) {
+      const fallenSet = new Set(preservedFallenIndices);
+      for (const pin of physics.bowlingWorld.pins) {
+        if (fallenSet.has(pin.index)) {
+          pin.fallen = true;
+        }
+      }
+      physics.bowlingWorld.hideFallenPins();
     }
 
     this.aimingSystem?.forceResetToPedestal();
@@ -942,6 +961,9 @@ export class GameFlowSystem
         this.uiSystem?.updateMainMenu(this.progress);
       }
 
+      const bestScore = isWorkshopTest
+        ? this.levelScore
+        : this.progress.bestScores[this.currentLevelConfig.id] ?? this.levelScore;
       const summary: ScoreSummary = {
         levelId: this.currentLevelConfig.id,
         levelName: this.currentLevelConfig.name,
@@ -950,6 +972,7 @@ export class GameFlowSystem
         shotsUsed: this.shotsUsed,
         maxShots: this.currentLevelConfig.maxShots,
         levelScore: this.levelScore,
+        bestScore,
         totalScore: this.totalScore,
         stars,
         callout: outcome.callout,
@@ -959,7 +982,8 @@ export class GameFlowSystem
       this.sm.transitionGame('RESULT');
       this.uiSystem?.updateModal(
         isWorkshopTest ? 'WORKSHOP_RESULT' : 'RESULT',
-        summary
+        summary,
+        this.currentLevelIndex
       );
       this.refreshPanelsVisibility();
     } else {
@@ -978,37 +1002,38 @@ export class GameFlowSystem
   // =========================================================================
 
   onPlayCampaign(): void {
-    this.physicsSystem?.audio.playClick();
-    if (!this.progress.onboardingCompleted) {
-      this.onReplayOnboarding();
-      return;
-    }
-    const startIdx = Math.min(
-      this.progress.unlockedLevelIndex,
-      CAMPAIGN_LEVELS.length - 1
-    );
-    void this.loadCampaignLevel(startIdx, true);
-  }
-
-  onQuickPlay(): void {
-    this.physicsSystem?.audio.playClick();
-    void this.loadCampaignLevel(this.currentLevelIndex, true);
+    this.onOpenLevelSelect();
   }
 
   onOpenLevelSelect(): void {
     this.physicsSystem?.audio.playClick();
+    this.isSubScreenOpen = false;
     this.uiSystem?.updateLevelSelect(this.progress);
     this.sm.transitionGame('LEVEL_SELECT');
     this.refreshPanelsVisibility();
   }
 
   onSelectLevel(index: number): void {
+    const safeIdx = Math.max(0, Math.min(CAMPAIGN_LEVELS.length - 1, index));
+    const unlocked =
+      safeIdx <= this.progress.unlockedLevelIndex ||
+      this.progress.completedLevels.includes(safeIdx);
+    if (!unlocked) {
+      this.physicsSystem?.audio.playRailTap();
+      this.uiSystem?.showCallout(
+        'COMPLETE PREVIOUS LEVEL TO UNLOCK',
+        '#fbbf24',
+        1800
+      );
+      return;
+    }
     this.physicsSystem?.audio.playClick();
-    void this.loadCampaignLevel(index, true);
+    void this.loadCampaignLevel(safeIdx, true);
   }
 
   onOpenWorkshop(): void {
     this.physicsSystem?.audio.playClick();
+    this.isSubScreenOpen = false;
     this.currentLevelConfig = compileWorkshopLevel(this.workshopLayout);
     this.selectedWorkshopSegIdx = Math.max(
       0,
@@ -1027,14 +1052,6 @@ export class GameFlowSystem
     this.isSubScreenOpen = true;
     this.uiSystem?.updateSettings(this.settings);
     this.uiSystem?.setVisiblePanels(new Set(['settings']));
-  }
-
-  onOpenInstructions(): void {
-    this.physicsSystem?.audio.playClick();
-    this.subScreenReturnState =
-      this.sm.state === 'PAUSED' ? 'PAUSED' : 'MAIN_MENU';
-    this.isSubScreenOpen = true;
-    this.uiSystem?.setVisiblePanels(new Set(['instructions']));
   }
 
   onCloseSubScreen(): void {
@@ -1059,6 +1076,7 @@ export class GameFlowSystem
 
   onReplayOnboarding(): void {
     this.physicsSystem?.audio.playClick();
+    this.isSubScreenOpen = false;
     this.onboardingStep = 'pinch';
     this.uiSystem?.updateOnboarding('pinch');
     void this.loadCampaignLevel(0, false).then(() => {
@@ -1238,7 +1256,7 @@ export class GameFlowSystem
       callout: 'PAUSED',
       isCustomWorkshop: this.currentLevelConfig.layout === 'custom',
     };
-    this.uiSystem?.updateModal('PAUSE', summarySnapshot);
+    this.uiSystem?.updateModal('PAUSE', summarySnapshot, this.currentLevelIndex);
     this.refreshPanelsVisibility();
   }
 
@@ -1252,7 +1270,7 @@ export class GameFlowSystem
     }
 
     if (this.lastSummary?.isCustomWorkshop) {
-      this.onOpenWorkshop();
+      this.onWorkshopTestAlley();
       return;
     }
 
@@ -1270,14 +1288,29 @@ export class GameFlowSystem
 
   onModalSecondary(): void {
     this.physicsSystem?.audio.playClick();
-    if (
-      this.sm.previousBeforePause === 'WORKSHOP_TEST' ||
-      this.lastSummary?.isCustomWorkshop
-    ) {
-      this.onWorkshopTestAlley();
+    if (this.sm.state === 'PAUSED') {
+      if (this.sm.previousBeforePause === 'WORKSHOP_TEST') {
+        this.onWorkshopTestAlley();
+      } else {
+        void this.loadCampaignLevel(this.currentLevelIndex, true);
+      }
       return;
     }
-    void this.loadCampaignLevel(this.currentLevelIndex, true);
+
+    if (this.lastSummary?.isCustomWorkshop) {
+      this.onOpenWorkshop();
+      return;
+    }
+
+    const hasNext =
+      this.lastSummary &&
+      this.lastSummary.stars > 0 &&
+      this.currentLevelIndex < CAMPAIGN_LEVELS.length - 1;
+    if (hasNext) {
+      void this.loadCampaignLevel(this.currentLevelIndex, true);
+    } else {
+      this.onOpenLevelSelect();
+    }
   }
 
   onModalTertiary(): void {
@@ -1398,6 +1431,18 @@ export class GameFlowSystem
   onWorkshopSetPins(formation: PinFormation): void {
     this.physicsSystem?.audio.playClick();
     this.workshopLayout = {...this.workshopLayout, pinFormation: formation};
+    this.syncWorkshopUI();
+  }
+
+  onWorkshopStepShots(delta: number): void {
+    this.physicsSystem?.audio.playClick();
+    this.workshopLayout = stepWorkshopShots(this.workshopLayout, delta);
+    this.syncWorkshopUI();
+  }
+
+  onWorkshopCycleDifficulty(): void {
+    this.physicsSystem?.audio.playClick();
+    this.workshopLayout = cycleWorkshopDifficulty(this.workshopLayout);
     this.syncWorkshopUI();
   }
 

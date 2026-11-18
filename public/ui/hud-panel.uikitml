@@ -99,12 +99,14 @@
   }
   .actions-row {
     flex-direction: row;
-    gap: 8px;
+    gap: 10px;
     justify-content: space-between;
   }
   .hud-btn {
     flex-grow: 1;
     justify-content: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
 </style>
 <Panel class="hud-root">
@@ -138,7 +140,7 @@
   <div class="actions-row">
     <Button id="hud-reset-ball" class="hud-btn">
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
-      <ButtonLabel>Reset</ButtonLabel>
+      <ButtonLabel>Reset Ball</ButtonLabel>
     </Button>
     <Button id="hud-recenter" class="hud-btn">
       <ButtonIcon><Crosshair></Crosshair></ButtonIcon>

@@ -1,16 +1,16 @@
 <style>
   .menu-root {
     flex-direction: column;
-    width: 560px;
-    padding-top: 20px;
-    padding-bottom: 20px;
-    padding-left: 22px;
-    padding-right: 22px;
-    gap: 12px;
+    width: 520px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+    padding-left: 26px;
+    padding-right: 26px;
+    gap: 14px;
     background-color: #101726;
     border-color: #3b4b6b;
     border-width: 2px;
-    border-radius: 24px;
+    border-radius: 26px;
   }
   .brand-row {
     flex-direction: row;
@@ -19,7 +19,7 @@
   }
   .brand-left {
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
   }
   .eyebrow {
     color: #38bdf8;
@@ -29,64 +29,69 @@
   }
   .title {
     color: #fde047;
-    font-size: 38px;
+    font-size: 40px;
     font-weight: 700;
-    line-height: 42px;
+    line-height: 44px;
   }
   .tagline {
     color: #e2e8f0;
-    font-size: 16px;
+    font-size: 15px;
     line-height: 20px;
   }
-  .xr-badge {
-    padding-top: 6px;
-    padding-bottom: 6px;
+  .progress-box {
+    padding-top: 7px;
+    padding-bottom: 7px;
     padding-left: 12px;
     padding-right: 12px;
-    border-radius: 14px;
+    border-radius: 12px;
     background-color: #172554;
     border-color: #38bdf8;
     border-width: 1px;
   }
-  .xr-badge-text {
+  .progress-text {
     color: #bae6fd;
     font-size: 13px;
     font-weight: 700;
   }
-  .summary-box {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+  .status-box {
     padding-top: 10px;
     padding-bottom: 10px;
     padding-left: 14px;
     padding-right: 14px;
-    background-color: #182338;
+    background-color: #162033;
     border-color: #2b3a55;
     border-width: 1px;
     border-radius: 14px;
   }
-  .summary-text {
+  .status-text {
     color: #cbd5e1;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
+    line-height: 19px;
   }
-  .grid-row {
-    flex-direction: row;
-    gap: 10px;
+  .menu-actions {
+    flex-direction: column;
+    gap: 12px;
   }
-  .nav-btn {
-    flex-grow: 1;
-    justify-content: flex-start;
+  .menu-btn {
+    width: 100%;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    justify-content: center;
   }
   .primary-btn {
-    flex-grow: 1;
+    width: 100%;
+    padding-top: 14px;
+    padding-bottom: 14px;
     justify-content: center;
     background-color: #0284c7;
   }
-  .footer-row {
-    flex-direction: row;
-    gap: 10px;
+  .custom-btn {
+    width: 100%;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    justify-content: center;
+    background-color: #b45309;
   }
 </style>
 <Panel class="menu-root">
@@ -96,60 +101,31 @@
       <div class="title">ROLLOX</div>
       <div class="tagline">Roll Beyond the Ordinary.</div>
     </div>
-    <div class="xr-badge">
-      <span id="menu-progress-badge" class="xr-badge-text">Campaign: 1 / 5</span>
+    <div class="progress-box">
+      <span id="menu-progress-badge" class="progress-text">Cleared: 0 / 5</span>
     </div>
   </div>
-  <div class="summary-box">
-    <span id="menu-status-line" class="summary-text">Pinch, pull back, aim, and release. No controllers needed.</span>
+
+  <div class="status-box">
+    <span id="menu-xr-status" class="status-text">Checking WebXR Mixed Reality support...</span>
   </div>
-  <div class="grid-row">
-    <Button id="btn-play-campaign" class="primary-btn">
+
+  <div class="menu-actions">
+    <Button id="btn-play" class="primary-btn">
       <ButtonIcon><Play></Play></ButtonIcon>
-      <ButtonLabel>Play Campaign</ButtonLabel>
+      <ButtonLabel>PLAY</ButtonLabel>
     </Button>
-    <Button id="btn-quick-play" class="nav-btn">
-      <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
-      <ButtonLabel>Quick Play</ButtonLabel>
-    </Button>
-  </div>
-  <div class="grid-row">
-    <Button id="btn-alley-workshop" class="nav-btn">
+    <Button id="btn-custom-game" class="custom-btn">
       <ButtonIcon><Wrench></Wrench></ButtonIcon>
-      <ButtonLabel>Alley Workshop</ButtonLabel>
+      <ButtonLabel>CUSTOM GAME</ButtonLabel>
     </Button>
-    <Button id="btn-level-select" class="nav-btn">
-      <ButtonIcon><Trophy></Trophy></ButtonIcon>
-      <ButtonLabel>Level Selection</ButtonLabel>
-    </Button>
-  </div>
-  <div class="grid-row">
-    <Button id="btn-settings" class="nav-btn">
+    <Button id="btn-settings" class="menu-btn">
       <ButtonIcon><Settings></Settings></ButtonIcon>
-      <ButtonLabel>Settings</ButtonLabel>
+      <ButtonLabel>SETTINGS</ButtonLabel>
     </Button>
-    <Button id="btn-instructions" class="nav-btn">
-      <ButtonIcon><CircleHelp></CircleHelp></ButtonIcon>
-      <ButtonLabel>Instructions</ButtonLabel>
-    </Button>
-  </div>
-  <div class="footer-row">
-    <Button id="btn-menu-recenter" class="nav-btn">
-      <ButtonIcon><Crosshair></Crosshair></ButtonIcon>
-      <ButtonLabel>Recenter Table</ButtonLabel>
-    </Button>
-    <Button id="btn-menu-xr" class="nav-btn">
+    <Button id="btn-menu-xr" class="menu-btn">
       <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
-      <ButtonLabel id="btn-menu-xr-label">Enter XR</ButtonLabel>
+      <ButtonLabel id="btn-menu-xr-label">ENTER MIXED REALITY</ButtonLabel>
     </Button>
-  </div>
-  <div class="summary-box">
-    <span class="summary-text">Menu Size</span>
-    <div style="flex-direction: row; gap: 8px; align-items: center;">
-      <Button id="menu-scale-down"><ButtonLabel>-</ButtonLabel></Button>
-      <span id="menu-scale-val" style="color: #fde047; font-size: 14px; font-weight: 700; width: 52px; text-align: center;">100%</span>
-      <Button id="menu-scale-up"><ButtonLabel>+</ButtonLabel></Button>
-      <Button id="menu-scale-reset"><ButtonLabel>Reset</ButtonLabel></Button>
-    </div>
   </div>
 </Panel>

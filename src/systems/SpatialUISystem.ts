@@ -9,8 +9,20 @@ import {
 import * as THREE from 'three';
 
 import {SpatialPanelTag} from '../components';
-import {CAMPAIGN_LEVELS} from '../levels';
-import {UI_SCALE_DEFAULT, UI_SCALE_STEP, clampUiScale} from '../pullInteraction';
+import {
+  CAMPAIGN_LEVELS,
+  formatWorkshopDifficulty,
+} from '../levels';
+import {
+  MenuInteractionGuard,
+  buildResultsPresentation,
+  getCampaignLevelCardState,
+} from '../menuInteraction';
+import {
+  UI_SCALE_DEFAULT,
+  UI_SCALE_STEP,
+  clampUiScale,
+} from '../pullInteraction';
 import type {
   CampaignProgress,
   GameSettings,
@@ -22,6 +34,12 @@ import type {
   WorkshopModuleKind,
   WorkshopValidationResult,
 } from '../types';
+import {
+  type XRCapabilityReport,
+  exitXRSessionSafely,
+  launchXRSessionWithDiagnostics,
+  probeXRCapabilities,
+} from '../xrDiagnostics';
 
 export type PanelKey =
   | 'main-menu'
@@ -38,12 +56,10 @@ export type ModalMode = 'PAUSE' | 'RESULT' | 'WORKSHOP_RESULT';
 
 export interface SpatialUIActionHandler {
   onPlayCampaign: () => void;
-  onQuickPlay: () => void;
   onOpenLevelSelect: () => void;
   onSelectLevel: (index: number) => void;
   onOpenWorkshop: () => void;
   onOpenSettings: () => void;
-  onOpenInstructions: () => void;
   onBackToMenu: () => void;
   onCloseSubScreen: () => void;
   onReplayOnboarding: () => void;
@@ -63,7 +79,7 @@ export interface SpatialUIActionHandler {
   onModalPrimary: () => void;
   onModalSecondary: () => void;
   onModalTertiary: () => void;
-  // Workshop actions
+  // Custom Game / Workshop actions
   onWorkshopAddSegment: (kind: WorkshopModuleKind) => void;
   onWorkshopSelectSegOffset: (delta: number) => void;
   onWorkshopMoveSeg: (dx: number, dz: number) => void;
@@ -73,6 +89,8 @@ export interface SpatialUIActionHandler {
   onWorkshopMoveObs: (dx: number, dz: number) => void;
   onWorkshopDeleteObs: () => void;
   onWorkshopSetPins: (formation: PinFormation) => void;
+  onWorkshopStepShots: (delta: number) => void;
+  onWorkshopCycleDifficulty: () => void;
   onWorkshopToggleRails: () => void;
   onWorkshopTestAlley: () => void;
   onWorkshopResetLayout: () => void;
@@ -115,16 +133,24 @@ const INTERACTIVE_PANELS = new Set<PanelKey>([
 ]);
 
 /**
- * IWSDK ECS System managing all 9 UIKitML spatial UI panels, Horizon kit buttons,
- * hand poke + ray pointer hit filtering, table-locked spatial synchronization,
- * callout toast timers, and 2D XR entry dock state.
+ * IWSDK ECS System managing spatial UIKitML panels, interaction stability guards
+ * (per-button debounce + cross-screen transition lock + stationary height anchor),
+ * live WebXR capability probing/diagnostics, and 2D XR entry dock state.
  */
 export class SpatialUISystem extends createSystem({}) {
   private panels = new Map<PanelKey, ManagedPanel>();
   private handler: SpatialUIActionHandler | null = null;
   private calloutHideAt = 0;
   private currentUiScale = UI_SCALE_DEFAULT;
+  private visiblePanelsSignature = '';
+  private interactionGuard = new MenuInteractionGuard();
 
+  private xrReport: XRCapabilityReport | null = null;
+  private xrLaunching = false;
+  private xrLastError: string | null = null;
+  private xrEnabledFeaturesNote: string | null = null;
+
+  private _anchor = new THREE.Vector3();
   private _offset = new THREE.Vector3();
   private _quatY = new THREE.Quaternion();
   private _yAxis = new THREE.Vector3(0, 1, 0);
@@ -220,7 +246,6 @@ export class SpatialUISystem extends createSystem({}) {
 
     const label = `${Math.round(this.currentUiScale * 100)}%`;
     this.setText('settings', 'set-scale-val', label);
-    this.setText('main-menu', 'menu-scale-val', label);
     return this.currentUiScale;
   }
 
@@ -239,52 +264,35 @@ export class SpatialUISystem extends createSystem({}) {
   }
 
   private bindClick(panelKey: PanelKey, id: string, fn: () => void): void {
-    const el = this.panels.get(panelKey)?.asset.getElementById(id);
-    if (!el) return;
-    const listener = () => fn();
+    const panel = this.panels.get(panelKey);
+    const el = panel?.asset.getElementById(id);
+    if (!panel || !el) return;
+    const guardKey = `${panelKey}:${id}`;
+    const listener = () => {
+      if (!panel.asset.visible) return;
+      if (!this.interactionGuard.canActivate(guardKey, performance.now())) {
+        return;
+      }
+      fn();
+    };
     el.addEventListener('click', listener);
     this.cleanupFuncs.push(() => el.removeEventListener('click', listener));
   }
 
   private bindUIListeners(): void {
-    // Main Menu
-    this.bindClick('main-menu', 'btn-play-campaign', () =>
+    // Simplified Main Menu: Play -> Custom Game -> Settings -> Enter/Exit MR
+    this.bindClick('main-menu', 'btn-play', () =>
       this.handler?.onPlayCampaign()
     );
-    this.bindClick('main-menu', 'btn-quick-play', () =>
-      this.handler?.onQuickPlay()
-    );
-    this.bindClick('main-menu', 'btn-alley-workshop', () =>
+    this.bindClick('main-menu', 'btn-custom-game', () =>
       this.handler?.onOpenWorkshop()
-    );
-    this.bindClick('main-menu', 'btn-level-select', () =>
-      this.handler?.onOpenLevelSelect()
     );
     this.bindClick('main-menu', 'btn-settings', () =>
       this.handler?.onOpenSettings()
     );
-    this.bindClick('main-menu', 'btn-instructions', () =>
-      this.handler?.onOpenInstructions()
-    );
-    this.bindClick('main-menu', 'btn-menu-recenter', () =>
-      this.handler?.onRecenterTable()
-    );
     this.bindClick('main-menu', 'btn-menu-xr', () => {
-      if (this.world.visibilityState.value === VisibilityState.NonImmersive) {
-        this.world.launchXR();
-      } else {
-        this.world.exitXR();
-      }
+      void this.handleEnterOrExitXR();
     });
-    this.bindClick('main-menu', 'menu-scale-down', () =>
-      this.handler?.onAdjustUiScale(-UI_SCALE_STEP)
-    );
-    this.bindClick('main-menu', 'menu-scale-up', () =>
-      this.handler?.onAdjustUiScale(UI_SCALE_STEP)
-    );
-    this.bindClick('main-menu', 'menu-scale-reset', () =>
-      this.handler?.onResetUiScale()
-    );
 
     // HUD
     this.bindClick('hud', 'hud-reset-ball', () => this.handler?.onResetBall());
@@ -359,11 +367,14 @@ export class SpatialUISystem extends createSystem({}) {
     this.bindClick('settings', 'set-recenter', () =>
       this.handler?.onRecenterTable()
     );
+    this.bindClick('settings', 'set-practice-btn', () =>
+      this.handler?.onReplayOnboarding()
+    );
     this.bindClick('settings', 'set-reset-place', () =>
       this.handler?.onResetPlacement()
     );
 
-    // Instructions
+    // Instructions (kept for backwards scene asset completeness)
     this.bindClick('instructions', 'inst-back', () =>
       this.handler?.onCloseSubScreen()
     );
@@ -371,7 +382,7 @@ export class SpatialUISystem extends createSystem({}) {
       this.handler?.onReplayOnboarding()
     );
 
-    // Modal (Pause & Result)
+    // Modal (Pause & Post-Game Results)
     this.bindClick('modal', 'modal-primary-btn', () =>
       this.handler?.onModalPrimary()
     );
@@ -390,7 +401,7 @@ export class SpatialUISystem extends createSystem({}) {
       this.handler?.onSkipOnboarding()
     );
 
-    // Workshop
+    // Custom Game Setup / Alley Workshop
     this.bindClick('workshop', 'ws-back-menu', () =>
       this.handler?.onBackToMenu()
     );
@@ -481,6 +492,15 @@ export class SpatialUISystem extends createSystem({}) {
     this.bindClick('workshop', 'ws-pins-6', () =>
       this.handler?.onWorkshopSetPins('crown6')
     );
+    this.bindClick('workshop', 'ws-shots-down', () =>
+      this.handler?.onWorkshopStepShots(-1)
+    );
+    this.bindClick('workshop', 'ws-shots-up', () =>
+      this.handler?.onWorkshopStepShots(1)
+    );
+    this.bindClick('workshop', 'ws-diff-cycle', () =>
+      this.handler?.onWorkshopCycleDifficulty()
+    );
     this.bindClick('workshop', 'ws-rails-toggle', () =>
       this.handler?.onWorkshopToggleRails()
     );
@@ -492,20 +512,172 @@ export class SpatialUISystem extends createSystem({}) {
     );
   }
 
-  private wire2DDock(): void {
+  private async refreshXRCapabilities(): Promise<void> {
+    this.xrReport = await probeXRCapabilities({
+      xrDefaults: this.world.xrDefaults,
+    });
+    this.syncXRDiagnosticsUI();
+  }
+
+  private async handleEnterOrExitXR(): Promise<void> {
+    if (this.world.session != null) {
+      await exitXRSessionSafely(this.world);
+      this.xrLastError = null;
+      this.xrEnabledFeaturesNote = null;
+      this.syncXRDiagnosticsUI();
+      return;
+    }
+
+    if (this.xrLaunching || this.world.sessionRequestPending) {
+      return;
+    }
+
+    if (!this.xrReport) {
+      await this.refreshXRCapabilities();
+    }
+
+    if (this.xrReport && !this.xrReport.immersiveArSupported) {
+      this.xrLastError = this.xrReport.detailMessage;
+      this.syncXRDiagnosticsUI();
+      this.showCallout('IMMERSIVE-AR UNSUPPORTED HERE', '#fbbf24', 2400);
+      return;
+    }
+
+    this.xrLaunching = true;
+    this.xrLastError = null;
+    this.xrEnabledFeaturesNote = null;
+    this.syncXRDiagnosticsUI();
+
+    const result = await launchXRSessionWithDiagnostics(this.world, {
+      onSessionEnded: () => {
+        this.xrLaunching = false;
+        this.xrEnabledFeaturesNote = null;
+        this.syncXRDiagnosticsUI();
+      },
+      onVisibilityChanged: () => {
+        this.syncXRDiagnosticsUI();
+      },
+    });
+
+    this.xrLaunching = false;
+
+    if (!result.ok) {
+      if (!result.duplicatePrevented) {
+        this.xrLastError =
+          result.errorMessage ?? 'Failed to start Mixed Reality session.';
+        this.showCallout('MIXED REALITY LAUNCH FAILED', '#fb7185', 2600);
+      }
+      this.syncXRDiagnosticsUI();
+      return;
+    }
+
+    const grantedCount = result.enabledFeatures.length;
+    const skipped = result.unsupportedRequestedFeatures;
+    if (grantedCount > 0) {
+      this.xrEnabledFeaturesNote =
+        skipped.length > 0
+          ? `Session active (${result.enabledFeatures.join(', ')}) | Optional unavailable: ${skipped.join(', ')}`
+          : `Session active (${result.enabledFeatures.join(', ')})`;
+    } else {
+      this.xrEnabledFeaturesNote = 'Mixed Reality immersive-ar session active.';
+    }
+    this.syncXRDiagnosticsUI();
+  }
+
+  private syncXRDiagnosticsUI(): void {
     const dock = document.getElementById('xr-entry-dock');
-    const enterBtn = document.getElementById('btn-enter-xr') as HTMLButtonElement | null;
+    const badge = document.getElementById('xr-status-badge');
+    const diagText = document.getElementById('xr-diagnostic-text');
+    const enterBtn = document.getElementById(
+      'btn-enter-xr'
+    ) as HTMLButtonElement | null;
+
+    const vis = this.world.visibilityState.value;
+    const is2D = vis === VisibilityState.NonImmersive && this.world.session == null;
+
+    if (dock) {
+      dock.style.display = is2D ? 'flex' : 'none';
+    }
+
+    let tone = this.xrReport?.statusTone ?? 'checking';
+    let badgeText = this.xrReport?.statusBadge ?? 'CHECKING WEBXR...';
+    let detail =
+      this.xrReport?.detailMessage ??
+      'Checking navigator.xr and immersive-ar support...';
+    let buttonLabel = 'Enter Mixed Reality';
+    let disabled = false;
+
+    if (!is2D) {
+      tone = 'active';
+      badgeText = 'SESSION ACTIVE';
+      detail =
+        this.xrEnabledFeaturesNote ??
+        'Mixed Reality immersive-ar session active.';
+      buttonLabel = 'Exit Mixed Reality';
+      disabled = false;
+    } else if (this.xrLaunching || this.world.sessionRequestPending) {
+      tone = 'loading';
+      badgeText = 'STARTING XR...';
+      detail = 'Requesting immersive-ar session and permissions...';
+      buttonLabel = 'Starting Mixed Reality...';
+      disabled = true;
+    } else if (this.xrLastError) {
+      tone = 'error';
+      badgeText = 'XR LAUNCH ERROR';
+      detail = this.xrLastError;
+      buttonLabel = 'Retry Mixed Reality';
+      disabled = !(this.xrReport?.immersiveArSupported ?? true);
+    } else if (this.xrReport && !this.xrReport.immersiveArSupported) {
+      tone = this.xrReport.statusTone;
+      badgeText = this.xrReport.statusBadge;
+      detail = this.xrReport.detailMessage;
+      buttonLabel = 'Mixed Reality Unavailable';
+      disabled = true;
+    }
+
+    if (badge) {
+      badge.textContent = badgeText;
+      badge.setAttribute('data-tone', tone);
+    }
+    if (diagText) {
+      diagText.textContent = detail;
+      diagText.setAttribute('data-tone', tone);
+    }
+    if (enterBtn) {
+      enterBtn.textContent = buttonLabel;
+      enterBtn.disabled = disabled;
+    }
+
+    this.setText('main-menu', 'menu-xr-status', detail);
+    this.setText(
+      'main-menu',
+      'btn-menu-xr-label',
+      !is2D
+        ? 'EXIT MIXED REALITY'
+        : this.xrLaunching
+          ? 'STARTING MIXED REALITY...'
+          : 'ENTER MIXED REALITY'
+    );
+    this.setProps('main-menu', 'btn-menu-xr', {
+      backgroundColor: disabled
+        ? '#334155'
+        : !is2D
+          ? '#991b1b'
+          : '#1e293b',
+    });
+  }
+
+  private wire2DDock(): void {
+    const enterBtn = document.getElementById(
+      'btn-enter-xr'
+    ) as HTMLButtonElement | null;
     const recenterBtn = document.getElementById(
       'btn-desktop-recenter'
     ) as HTMLButtonElement | null;
 
     if (enterBtn) {
       const onEnterClick = () => {
-        if (this.world.visibilityState.value === VisibilityState.NonImmersive) {
-          this.world.launchXR();
-        } else {
-          this.world.exitXR();
-        }
+        void this.handleEnterOrExitXR();
       };
       enterBtn.addEventListener('click', onEnterClick);
       this.cleanupFuncs.push(() =>
@@ -521,29 +693,29 @@ export class SpatialUISystem extends createSystem({}) {
       );
     }
 
-    const unsub = this.world.visibilityState.subscribe((vis) => {
-      const is2D = vis === VisibilityState.NonImmersive;
-      if (dock) {
-        dock.style.display = is2D ? 'flex' : 'none';
-      }
-      if (enterBtn) {
-        enterBtn.textContent = is2D
-          ? 'Enter Mixed Reality'
-          : 'Exit Mixed Reality';
-      }
-      this.setText(
-        'main-menu',
-        'btn-menu-xr-label',
-        is2D ? 'Enter Mixed Reality' : 'Exit Mixed Reality'
-      );
+    const unsub = this.world.visibilityState.subscribe(() => {
+      this.syncXRDiagnosticsUI();
     });
     this.cleanupFuncs.push(unsub);
+
+    void this.refreshXRCapabilities();
   }
 
-  syncLayout(arenaOrigin: THREE.Vector3, arenaYawRad: number): void {
+  /**
+   * Synchronizes spatial panels in front of the table while keeping panel Y
+   * anchored to the calibrated baseline (`uiAnchorY`) rather than `arenaOrigin.y`.
+   * This ensures pressing Higher / Lower raises or lowers only the bowling table,
+   * never shifting UI buttons away or under a stationary hand/ray.
+   */
+  syncLayout(
+    arenaOrigin: THREE.Vector3,
+    arenaYawRad: number,
+    uiAnchorY = arenaOrigin.y
+  ): void {
+    this._anchor.set(arenaOrigin.x, uiAnchorY, arenaOrigin.z);
     this._quatY.setFromAxisAngle(this._yAxis, arenaYawRad);
     for (const panel of this.panels.values()) {
-      this._offset.copy(panel.offset).applyQuaternion(this._quatY).add(arenaOrigin);
+      this._offset.copy(panel.offset).applyQuaternion(this._quatY).add(this._anchor);
       panel.asset.position.copy(this._offset);
       panel.asset.rotation.set(
         panel.pitchRad,
@@ -555,6 +727,12 @@ export class SpatialUISystem extends createSystem({}) {
   }
 
   setVisiblePanels(visibleSet: Set<PanelKey>): void {
+    const nextSig = Array.from(visibleSet).sort().join('|');
+    if (nextSig !== this.visiblePanelsSignature) {
+      this.visiblePanelsSignature = nextSig;
+      this.interactionGuard.notifyPanelTransition(performance.now());
+    }
+
     for (const [key, panel] of this.panels.entries()) {
       const visible = visibleSet.has(key);
       panel.asset.visible = visible;
@@ -567,16 +745,13 @@ export class SpatialUISystem extends createSystem({}) {
   }
 
   updateMainMenu(progress: CampaignProgress): void {
-    const unlockedCount = Math.min(
-      CAMPAIGN_LEVELS.length,
-      progress.unlockedLevelIndex + 1
-    );
     const completed = progress.completedLevels.length;
     this.setText(
       'main-menu',
       'menu-progress-badge',
-      `Cleared: ${completed} / ${CAMPAIGN_LEVELS.length} | Unlocked: ${unlockedCount}`
+      `Cleared: ${completed} / ${CAMPAIGN_LEVELS.length}`
     );
+    this.syncXRDiagnosticsUI();
   }
 
   updateHud(params: {
@@ -637,25 +812,52 @@ export class SpatialUISystem extends createSystem({}) {
 
   updateLevelSelect(progress: CampaignProgress): void {
     for (let i = 0; i < CAMPAIGN_LEVELS.length; i++) {
-      const lvl = CAMPAIGN_LEVELS[i];
-      const bestScore = progress.bestScores[lvl.id] ?? 0;
-      const stars = progress.bestStars[lvl.id] ?? 0;
-      const starTxt = `${'*'.repeat(stars)}${'-'.repeat(3 - stars)}`;
-      const unlocked = i <= progress.unlockedLevelIndex;
-      this.setText('level-select', `lvl-name-${i}`, `${i + 1}. ${lvl.name}`);
+      const card = getCampaignLevelCardState(i, progress);
+      const starTxt = `${'*'.repeat(card.stars)}${'-'.repeat(3 - card.stars)}`;
+
+      this.setText('level-select', `lvl-name-${i}`, `${i + 1}. ${card.name}`);
+      this.setText('level-select', `lvl-status-${i}`, card.statusBadge);
       this.setText(
         'level-select',
         `lvl-best-${i}`,
-        `${lvl.subtitle.replace(/^Level \d+ [|·] /, '')} | Best: ${bestScore}`
+        `${card.subtitle} | Best: ${card.bestScore}`
       );
       this.setText('level-select', `lvl-stars-${i}`, starTxt);
-      if (i > 0) {
-        this.setText(
-          'level-select',
-          `btn-lvl-label-${i}`,
-          unlocked ? 'Play' : 'Quick'
-        );
-      }
+      this.setText('level-select', `btn-lvl-label-${i}`, card.buttonLabel);
+
+      const statusColor =
+        card.status === 'COMPLETED'
+          ? '#4ade80'
+          : card.status === 'CURRENT'
+            ? '#38bdf8'
+            : card.status === 'UNLOCKED'
+              ? '#bae6fd'
+              : '#64748b';
+      const borderColor =
+        card.status === 'COMPLETED'
+          ? '#22c55e'
+          : card.status === 'CURRENT'
+            ? '#38bdf8'
+            : card.unlocked
+              ? '#334155'
+              : '#1e293b';
+      const cardBg = card.unlocked ? '#182338' : '#111827';
+      const btnBg = !card.unlocked
+        ? '#1e293b'
+        : card.status === 'CURRENT'
+          ? '#0284c7'
+          : card.status === 'COMPLETED'
+            ? '#166534'
+            : '#334155';
+
+      this.setProps('level-select', `lvl-status-${i}`, {color: statusColor});
+      this.setProps('level-select', `lvl-card-${i}`, {
+        backgroundColor: cardBg,
+        borderColor,
+      });
+      this.setProps('level-select', `btn-lvl-${i}`, {
+        backgroundColor: btnBg,
+      });
     }
   }
 
@@ -677,7 +879,6 @@ export class SpatialUISystem extends createSystem({}) {
     );
     const scalePct = `${Math.round(clampUiScale(settings.uiScale) * 100)}%`;
     this.setText('settings', 'set-scale-val', scalePct);
-    this.setText('main-menu', 'menu-scale-val', scalePct);
     for (const mode of ['linear', 'smooth', 'snappy'] as const) {
       this.setProps('settings', `set-curve-${mode}`, {
         backgroundColor:
@@ -692,26 +893,55 @@ export class SpatialUISystem extends createSystem({}) {
     validation: WorkshopValidationResult
   ): void {
     const seg = layout.segments[selectedSegIdx];
+    const safeShots = Math.max(2, Math.min(6, Math.round(layout.maxShots || 4)));
+    const diffLabel = formatWorkshopDifficulty(layout.difficulty);
+    const pinCountLabel =
+      layout.pinFormation === 'standard10'
+        ? '10 Pins'
+        : layout.pinFormation === 'diamond9'
+          ? 'Diamond 9'
+          : layout.pinFormation === 'split8'
+            ? 'Split 8'
+            : 'Crown 6';
+
     this.setText(
       'workshop',
       'ws-summary',
-      `${layout.segments.length} Modules | ${layout.obstacles.length} Obstacles | ${layout.pinFormation}`
+      `${layout.segments.length} Modules | ${layout.obstacles.length} Obstacles | ${pinCountLabel} | ${safeShots} Shots (${diffLabel})`
     );
     this.setText(
       'workshop',
       'ws-selected-seg',
       seg
-        ? `Segment #${selectedSegIdx + 1} (${seg.kind})`
-        : 'No segments'
+        ? `Module #${selectedSegIdx + 1} (${seg.kind})`
+        : 'No modules'
     );
+    this.setText('workshop', 'ws-shots-val', `${safeShots} Shots`);
+    this.setText('workshop', 'ws-diff-label', `Speed: ${diffLabel}`);
     this.setText(
       'workshop',
       'ws-rails-label',
       layout.railsEnabled ? 'Rails: ON' : 'Rails: OFF'
     );
+    this.setProps('workshop', 'ws-rails-toggle', {
+      backgroundColor: layout.railsEnabled ? '#14532d' : '#334155',
+    });
+
+    const pinButtonMap: Record<PinFormation, string> = {
+      standard10: 'ws-pins-10',
+      diamond9: 'ws-pins-9',
+      split8: 'ws-pins-8',
+      crown6: 'ws-pins-6',
+    };
+    (Object.keys(pinButtonMap) as PinFormation[]).forEach((formation) => {
+      this.setProps('workshop', pinButtonMap[formation], {
+        backgroundColor:
+          layout.pinFormation === formation ? '#0284c7' : '#1e293b',
+      });
+    });
 
     const statusMsg = validation.valid
-      ? validation.warnings[0] ?? 'Valid modular lane ready to bowl!'
+      ? validation.warnings[0] ?? 'Valid custom lane - ready to Start Game!'
       : validation.errors[0] ?? 'Fix disconnected or overlapping modules.';
 
     this.setText('workshop', 'ws-validation-text', statusMsg);
@@ -766,15 +996,24 @@ export class SpatialUISystem extends createSystem({}) {
     }
   }
 
-  updateModal(mode: ModalMode, summary?: ScoreSummary): void {
+  updateModal(
+    mode: ModalMode,
+    summary?: ScoreSummary,
+    levelIndex = 0
+  ): void {
     if (mode === 'PAUSE') {
       this.setText('modal', 'modal-eyebrow', 'GAME PAUSED');
-      this.setText('modal', 'modal-title', 'Take a Breather');
-      this.setText('modal', 'modal-stars', 'SEATED AR BOWLING');
+      this.setText(
+        'modal',
+        'modal-title',
+        summary ? summary.levelName : 'Take a Breather'
+      );
+      this.setText('modal', 'modal-stars', 'SEATED MIXED-REALITY BOWLING');
+      this.setProps('modal', 'modal-banner-box', {display: 'none'});
       this.setText(
         'modal',
         'modal-summary',
-        'Your miniature lane stays anchored right where you left it.'
+        'Your lane stays anchored where you left it.'
       );
       this.setText(
         'modal',
@@ -786,21 +1025,22 @@ export class SpatialUISystem extends createSystem({}) {
         'modal-score-val',
         summary ? `${summary.levelScore}` : '0'
       );
+      this.setText('modal', 'modal-best-label', 'SHOTS USED');
       this.setText(
         'modal',
-        'modal-total-val',
-        summary ? `${summary.totalScore}` : '0'
+        'modal-best-val',
+        summary ? `${summary.shotsUsed} / ${summary.maxShots}` : '0 / 3'
       );
       this.setText('modal', 'modal-primary-label', 'Resume Game');
       this.setText(
         'modal',
         'modal-secondary-label',
-        summary?.isCustomWorkshop ? 'Restart Test' : 'Restart Level'
+        summary?.isCustomWorkshop ? 'Restart Custom Game' : 'Restart Level'
       );
       this.setText(
         'modal',
         'modal-tertiary-label',
-        summary?.isCustomWorkshop ? 'Back to Workshop' : 'Main Menu'
+        summary?.isCustomWorkshop ? 'Edit Custom Game' : 'Main Menu'
       );
       this.setProps('modal', 'modal-settings-btn', {display: 'flex'});
       return;
@@ -808,29 +1048,32 @@ export class SpatialUISystem extends createSystem({}) {
 
     if (!summary) return;
     this.setProps('modal', 'modal-settings-btn', {display: 'none'});
-    const isWorkshop = mode === 'WORKSHOP_RESULT';
-    const hasNext =
-      !isWorkshop &&
-      summary.stars > 0 &&
-      CAMPAIGN_LEVELS.some((l) => l.id === summary.levelId && l.index < CAMPAIGN_LEVELS.length - 1);
 
-    this.setText(
-      'modal',
-      'modal-eyebrow',
-      isWorkshop ? 'ALLEY WORKSHOP TEST' : summary.levelName.toUpperCase()
-    );
-    this.setText('modal', 'modal-title', summary.callout);
+    const pres = buildResultsPresentation({
+      summary,
+      levelIndex,
+      totalLevels: CAMPAIGN_LEVELS.length,
+    });
+
+    this.setText('modal', 'modal-eyebrow', pres.eyebrow);
+    this.setText('modal', 'modal-title', pres.title);
     this.setText(
       'modal',
       'modal-stars',
-      `${'*'.repeat(summary.stars)}${'-'.repeat(3 - summary.stars)} (${summary.stars} / 3)`
+      `${'*'.repeat(summary.stars)}${'-'.repeat(3 - summary.stars)} (${summary.stars} / 3 STARS)`
     );
+    this.setProps('modal', 'modal-banner-box', {
+      display: pres.showBanner ? 'flex' : 'none',
+      backgroundColor: pres.isCampaignComplete ? '#1e3a8a' : '#14532d',
+      borderColor: pres.isCampaignComplete ? '#fde047' : '#4ade80',
+    });
+    this.setText('modal', 'modal-banner-text', pres.bannerText);
     this.setText(
       'modal',
       'modal-summary',
       summary.pinsKnocked >= summary.totalPins
         ? `Clean sweep in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}!`
-        : `Knocked ${summary.pinsKnocked} of ${summary.totalPins} pins in ${summary.shotsUsed} shots.`
+        : `Knocked ${summary.pinsKnocked} of ${summary.totalPins} pins in ${summary.shotsUsed} of ${summary.maxShots} shots.`
     );
     this.setText(
       'modal',
@@ -838,22 +1081,25 @@ export class SpatialUISystem extends createSystem({}) {
       `${summary.pinsKnocked} / ${summary.totalPins}`
     );
     this.setText('modal', 'modal-score-val', `${summary.levelScore}`);
-    this.setText('modal', 'modal-total-val', `${summary.totalScore}`);
-    this.setText(
-      'modal',
-      'modal-primary-label',
-      isWorkshop
-        ? 'Back to Workshop'
-        : hasNext
-          ? 'Next Level'
-          : 'Play Again'
-    );
-    this.setText(
-      'modal',
-      'modal-secondary-label',
-      isWorkshop ? 'Bowl Test Again' : 'Replay Level'
-    );
-    this.setText('modal', 'modal-tertiary-label', 'Main Menu');
+    if (summary.isCustomWorkshop) {
+      this.setText('modal', 'modal-best-label', 'SHOTS USED');
+      this.setText(
+        'modal',
+        'modal-best-val',
+        `${summary.shotsUsed} / ${summary.maxShots}`
+      );
+    } else {
+      this.setText('modal', 'modal-best-label', 'BEST SCORE');
+      this.setText(
+        'modal',
+        'modal-best-val',
+        `${summary.bestScore ?? summary.levelScore}`
+      );
+    }
+
+    this.setText('modal', 'modal-primary-label', pres.primaryLabel);
+    this.setText('modal', 'modal-secondary-label', pres.secondaryLabel);
+    this.setText('modal', 'modal-tertiary-label', pres.tertiaryLabel);
   }
 
   showCallout(text: string, colorHex = '#fde047', durationMs = 2100): void {
