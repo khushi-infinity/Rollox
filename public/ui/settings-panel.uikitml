@@ -87,6 +87,16 @@
   </div>
 
   <div class="setting-row">
+    <span class="label">Menu &amp; UI Scale</span>
+    <div class="btn-group">
+      <Button id="set-scale-down"><ButtonLabel>-</ButtonLabel></Button>
+      <span id="set-scale-val" class="value-txt">100%</span>
+      <Button id="set-scale-up"><ButtonLabel>+</ButtonLabel></Button>
+      <Button id="set-scale-reset"><ButtonLabel>Reset</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="setting-row">
     <span class="label">Table Height &amp; Distance</span>
     <div class="btn-group">
       <Button id="set-h-down"><ButtonLabel>H-</ButtonLabel></Button>

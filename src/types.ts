@@ -152,6 +152,7 @@ export interface GameSettings {
   showTrajectory: boolean;
   heightOffset: number;
   distanceOffset: number;
+  uiScale: number;
 }
 
 export interface CampaignProgress {

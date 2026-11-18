@@ -10,6 +10,7 @@ import * as THREE from 'three';
 
 import {SpatialPanelTag} from '../components';
 import {CAMPAIGN_LEVELS} from '../levels';
+import {UI_SCALE_DEFAULT, UI_SCALE_STEP, clampUiScale} from '../pullInteraction';
 import type {
   CampaignProgress,
   GameSettings,
@@ -56,6 +57,8 @@ export interface SpatialUIActionHandler {
   onAdjustVolume: (delta: number) => void;
   onSetPowerCurve: (curve: 'linear' | 'smooth' | 'snappy') => void;
   onToggleTrajectory: () => void;
+  onAdjustUiScale: (delta: number) => void;
+  onResetUiScale: () => void;
   onPause: () => void;
   onModalPrimary: () => void;
   onModalSecondary: () => void;
@@ -80,9 +83,12 @@ interface ManagedPanel {
   nodeId: string;
   entity: Entity;
   asset: UIKitMLAsset;
+  baseOffset: THREE.Vector3;
   offset: THREE.Vector3;
   yawRad: number;
   pitchRad: number;
+  baseWidthM: number;
+  baseHeightM: number;
 }
 
 const NODE_ID_BY_KEY: Record<PanelKey, string> = {
@@ -117,6 +123,7 @@ export class SpatialUISystem extends createSystem({}) {
   private panels = new Map<PanelKey, ManagedPanel>();
   private handler: SpatialUIActionHandler | null = null;
   private calloutHideAt = 0;
+  private currentUiScale = UI_SCALE_DEFAULT;
 
   private _offset = new THREE.Vector3();
   private _quatY = new THREE.Quaternion();
@@ -138,7 +145,10 @@ export class SpatialUISystem extends createSystem({}) {
       const h = entity.hasComponent(SpatialPanelTag)
         ? entity.getValue(SpatialPanelTag, 'targetHeightM') ?? 0.44
         : 0.44;
-      asset.document.setTargetDimensions(w, h);
+      asset.document.setTargetDimensions(
+        w * this.currentUiScale,
+        h * this.currentUiScale
+      );
 
       const ox = entity.hasComponent(SpatialPanelTag)
         ? entity.getValue(SpatialPanelTag, 'offsetX') ?? 0
@@ -172,9 +182,12 @@ export class SpatialUISystem extends createSystem({}) {
         nodeId,
         entity,
         asset,
+        baseOffset: new THREE.Vector3(ox, oy, oz),
         offset: new THREE.Vector3(ox, oy, oz),
         yawRad: THREE.MathUtils.degToRad(yawDeg),
         pitchRad: THREE.MathUtils.degToRad(pitchDeg),
+        baseWidthM: w,
+        baseHeightM: h,
       });
     });
 
@@ -185,6 +198,30 @@ export class SpatialUISystem extends createSystem({}) {
 
   setActionHandler(handler: SpatialUIActionHandler): void {
     this.handler = handler;
+  }
+
+  /**
+   * Scales all spatial UI panels uniformly using UIKitDocument.setTargetDimensions
+   * while keeping text crisp, interaction colliders aligned, and the 3D bowling
+   * arena completely unscaled.
+   */
+  setUiScale(rawScale: number): number {
+    this.currentUiScale = clampUiScale(rawScale);
+    const extraLift = Math.max(0, this.currentUiScale - 1.0);
+
+    for (const [key, panel] of this.panels.entries()) {
+      panel.asset.document.setTargetDimensions(
+        panel.baseWidthM * this.currentUiScale,
+        panel.baseHeightM * this.currentUiScale
+      );
+      panel.offset.copy(panel.baseOffset);
+      panel.offset.y += extraLift * (key === 'callout' ? 0.1 : 0.085);
+    }
+
+    const label = `${Math.round(this.currentUiScale * 100)}%`;
+    this.setText('settings', 'set-scale-val', label);
+    this.setText('main-menu', 'menu-scale-val', label);
+    return this.currentUiScale;
   }
 
   private setText(panelKey: PanelKey, id: string, text: string): void {
@@ -239,6 +276,15 @@ export class SpatialUISystem extends createSystem({}) {
         this.world.exitXR();
       }
     });
+    this.bindClick('main-menu', 'menu-scale-down', () =>
+      this.handler?.onAdjustUiScale(-UI_SCALE_STEP)
+    );
+    this.bindClick('main-menu', 'menu-scale-up', () =>
+      this.handler?.onAdjustUiScale(UI_SCALE_STEP)
+    );
+    this.bindClick('main-menu', 'menu-scale-reset', () =>
+      this.handler?.onResetUiScale()
+    );
 
     // HUD
     this.bindClick('hud', 'hud-reset-ball', () => this.handler?.onResetBall());
@@ -289,6 +335,15 @@ export class SpatialUISystem extends createSystem({}) {
     this.bindClick('settings', 'set-traj-toggle', () =>
       this.handler?.onToggleTrajectory()
     );
+    this.bindClick('settings', 'set-scale-down', () =>
+      this.handler?.onAdjustUiScale(-UI_SCALE_STEP)
+    );
+    this.bindClick('settings', 'set-scale-up', () =>
+      this.handler?.onAdjustUiScale(UI_SCALE_STEP)
+    );
+    this.bindClick('settings', 'set-scale-reset', () =>
+      this.handler?.onResetUiScale()
+    );
     this.bindClick('settings', 'set-h-down', () =>
       this.handler?.onAdjustHeight(-0.05)
     );
@@ -322,6 +377,9 @@ export class SpatialUISystem extends createSystem({}) {
     );
     this.bindClick('modal', 'modal-secondary-btn', () =>
       this.handler?.onModalSecondary()
+    );
+    this.bindClick('modal', 'modal-settings-btn', () =>
+      this.handler?.onOpenSettings()
     );
     this.bindClick('modal', 'modal-tertiary-btn', () =>
       this.handler?.onModalTertiary()
@@ -617,6 +675,9 @@ export class SpatialUISystem extends createSystem({}) {
       'set-traj-label',
       settings.showTrajectory ? 'Trajectory: ON' : 'Trajectory: OFF'
     );
+    const scalePct = `${Math.round(clampUiScale(settings.uiScale) * 100)}%`;
+    this.setText('settings', 'set-scale-val', scalePct);
+    this.setText('main-menu', 'menu-scale-val', scalePct);
     for (const mode of ['linear', 'smooth', 'snappy'] as const) {
       this.setProps('settings', `set-curve-${mode}`, {
         backgroundColor:
@@ -741,10 +802,12 @@ export class SpatialUISystem extends createSystem({}) {
         'modal-tertiary-label',
         summary?.isCustomWorkshop ? 'Back to Workshop' : 'Main Menu'
       );
+      this.setProps('modal', 'modal-settings-btn', {display: 'flex'});
       return;
     }
 
     if (!summary) return;
+    this.setProps('modal', 'modal-settings-btn', {display: 'none'});
     const isWorkshop = mode === 'WORKSHOP_RESULT';
     const hasNext =
       !isWorkshop &&

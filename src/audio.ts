@@ -67,37 +67,43 @@ export class RolloxAudio {
     if (!ctx) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
+    const chime = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(340, now);
-    osc.frequency.exponentialRampToValueAtTime(560, now + 0.055);
+    osc.frequency.exponentialRampToValueAtTime(580, now + 0.055);
+    chime.type = 'sine';
+    chime.frequency.setValueAtTime(880, now + 0.015);
     gain.gain.setValueAtTime(this.effectiveGain(0.14), now);
-    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.07);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.08);
     osc.connect(gain);
+    chime.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.075);
+    chime.start(now + 0.015);
+    osc.stop(now + 0.085);
+    chime.stop(now + 0.085);
   }
 
   playPowerTick(power01: number): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
     const nowMs = performance.now();
-    if (nowMs - this.lastTickTime < 75) return;
+    if (nowMs - this.lastTickTime < 72) return;
     this.lastTickTime = nowMs;
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
-    const freq = 260 + power01 * 420;
+    osc.type = power01 >= 0.72 ? 'triangle' : 'sine';
+    const freq = 260 + power01 * 460;
     osc.frequency.setValueAtTime(freq, now);
-    gain.gain.setValueAtTime(this.effectiveGain(0.045), now);
-    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.035);
+    gain.gain.setValueAtTime(this.effectiveGain(0.048), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.038);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.04);
+    osc.stop(now + 0.045);
   }
 
   playLaunch(power01: number): void {

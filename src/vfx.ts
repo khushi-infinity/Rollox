@@ -46,6 +46,7 @@ export class ParticleBurstPool extends THREE.Group {
   private trailParticles: ParticleState[] = [];
   private trailCursor = 0;
   private trailCooldown = 0;
+  private chargeCooldown = 0;
 
   private motesMesh: THREE.InstancedMesh;
   private motes: AmbientMote[] = [];
@@ -173,6 +174,42 @@ export class ParticleBurstPool extends THREE.Group {
     p.vy = 0.05;
     p.vz = 0;
     p.scale = 0.9;
+  }
+
+  emitChargeSpark(pos: THREE.Vector3, power01: number, dt: number): void {
+    this.chargeCooldown -= dt;
+    const interval = Math.max(0.032, 0.095 - power01 * 0.055);
+    if (this.chargeCooldown > 0) return;
+    this.chargeCooldown = interval;
+
+    const idx = this.cursor;
+    this.cursor = (this.cursor + 1) % POOL_SIZE;
+    const p = this.particles[idx];
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.048 + power01 * 0.025;
+
+    p.active = true;
+    p.life = 0;
+    p.maxLife = 0.28 + Math.random() * 0.14;
+    p.px = pos.x + Math.cos(angle) * radius;
+    p.py = pos.y - 0.01 + Math.random() * 0.025;
+    p.pz = pos.z + Math.sin(angle) * radius;
+    p.vx = -Math.sin(angle) * 0.18;
+    p.vy = 0.35 + power01 * 0.45;
+    p.vz = Math.cos(angle) * 0.18;
+    p.scale = 0.35 + power01 * 0.3;
+    p.rx = Math.random() * Math.PI;
+    p.ry = Math.random() * Math.PI;
+    p.vrx = 6;
+    p.vry = 8;
+
+    const hex =
+      power01 < 0.35 ? 0x38bdf8 : power01 < 0.72 ? 0x4ade80 : 0xfde047;
+    _color.setHex(hex);
+    this.burstMesh.setColorAt(idx, _color);
+    if (this.burstMesh.instanceColor) {
+      this.burstMesh.instanceColor.needsUpdate = true;
+    }
   }
 
   emitBurst(

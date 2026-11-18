@@ -1,5 +1,7 @@
 import {
+  DepthOccludable,
   Entity,
+  OcclusionShadersMode,
   VisibilityState,
   XRPlane,
   createSystem,
@@ -46,6 +48,12 @@ import {
   syncWorkshopIdSeed,
   validateWorkshopLayout,
 } from '../levels';
+import {
+  UI_SCALE_DEFAULT,
+  UI_SCALE_STEP,
+  clampUiScale,
+  stepUiScale,
+} from '../pullInteraction';
 import {RolloxStateMachine} from '../stateMachine';
 import type {
   CampaignProgress,
@@ -101,6 +109,8 @@ export class GameFlowSystem
   private arenaYaw = 0;
   private detectedSurfaceY: number | null = null;
   private hasAutoSnappedPlane = false;
+  private lastPlaneScore = Number.POSITIVE_INFINITY;
+  private isDepthOcclusionActive = false;
 
   private arenaGroup = new THREE.Group();
   private arenaRootEntity: Entity | null = null;
@@ -226,6 +236,7 @@ export class GameFlowSystem
     });
 
     this.uiSystem?.setActionHandler(this);
+    this.uiSystem?.setUiScale(this.settings.uiScale);
     this.syncAllTransforms();
     this.setupXRListeners();
     this.setupKeyboardShortcuts();
@@ -275,7 +286,12 @@ export class GameFlowSystem
     try {
       const sRaw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (sRaw) {
-        this.settings = {...DEFAULT_SETTINGS, ...JSON.parse(sRaw)};
+        const parsed = JSON.parse(sRaw) as Partial<GameSettings>;
+        this.settings = {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          uiScale: clampUiScale(parsed.uiScale ?? UI_SCALE_DEFAULT),
+        };
       }
       const pRaw = window.localStorage.getItem(PROGRESS_STORAGE_KEY);
       if (pRaw) {
@@ -344,28 +360,108 @@ export class GameFlowSystem
     }
   }
 
+  private hasDepthSensingFeature(session: XRSession | undefined): boolean {
+    if (!session) return false;
+    const feats = (session as XRSession & {enabledFeatures?: Iterable<string>})
+      .enabledFeatures;
+    if (!feats) return false;
+    for (const f of feats) {
+      if (f === 'depth-sensing') return true;
+    }
+    return false;
+  }
+
+  private syncDepthOccludables(): void {
+    const targets = [this.arenaRootEntity, this.ballEntity];
+    for (const ent of targets) {
+      if (!ent) continue;
+      if (this.isDepthOcclusionActive) {
+        if (ent.hasComponent(DepthOccludable)) {
+          ent.removeComponent(DepthOccludable);
+        }
+        ent.addComponent(DepthOccludable, {
+          mode: OcclusionShadersMode.MinMaxSoftOcclusion,
+        });
+      } else if (ent.hasComponent(DepthOccludable)) {
+        ent.removeComponent(DepthOccludable);
+      }
+    }
+    if (!this.isDepthOcclusionActive) {
+      this.assets?.restoreOpaqueMaterials();
+    }
+  }
+
   private setupXRListeners(): void {
+    const onSessionStart = () => {
+      this.isDepthOcclusionActive = this.hasDepthSensingFeature(
+        this.world.xrSession
+      );
+      this.syncDepthOccludables();
+    };
+    const onSessionEnd = () => {
+      this.isDepthOcclusionActive = false;
+      this.hasAutoSnappedPlane = false;
+      this.lastPlaneScore = Number.POSITIVE_INFINITY;
+      this.syncDepthOccludables();
+    };
+    this.renderer.xr.addEventListener('sessionstart', onSessionStart);
+    this.renderer.xr.addEventListener('sessionend', onSessionEnd);
+    this.cleanupFuncs.push(() => {
+      this.renderer.xr.removeEventListener('sessionstart', onSessionStart);
+      this.renderer.xr.removeEventListener('sessionend', onSessionEnd);
+    });
+
     this.queries.planes.subscribe('qualify', (entity) => {
-      if (this.hasAutoSnappedPlane) return;
       const xrPlane = entity.getValue(XRPlane, '_plane') as XRPlane | undefined;
       if (!xrPlane || xrPlane.orientation !== 'horizontal') return;
       const obj = entity.object3D;
       if (!obj) return;
       obj.getWorldPosition(this._ballPos);
-      // Snap only to table/desk height planes in comfortable seated range
-      if (this._ballPos.y >= 0.52 && this._ballPos.y <= 1.15) {
-        this.detectedSurfaceY = this._ballPos.y;
-        this.hasAutoSnappedPlane = true;
-        this.arenaOrigin.y = this.detectedSurfaceY + this.settings.heightOffset;
-        this.syncAllTransforms();
-        void this.rebuildCurrentLevel(true);
-        this.uiSystem?.showCallout('TABLE SURFACE DETECTED', '#38bdf8', 1600);
+
+      // Evaluate planes within comfortable seated table height [0.54m .. 1.12m]
+      if (this._ballPos.y < 0.54 || this._ballPos.y > 1.12) return;
+
+      this.camera.getWorldPosition(this._headPos);
+      this.camera.getWorldDirection(this._headForward);
+      this._headForward.y = 0;
+      if (this._headForward.lengthSq() < 0.001) {
+        this._headForward.set(0, 0, -1);
+      } else {
+        this._headForward.normalize();
+      }
+      const focusX = this._headPos.x + this._headForward.x * 0.65;
+      const focusZ = this._headPos.z + this._headForward.z * 0.65;
+      const xzDist = Math.hypot(this._ballPos.x - focusX, this._ballPos.z - focusZ);
+      const heightPenalty = Math.abs(this._ballPos.y - 0.85) * 0.6;
+      const score = xzDist + heightPenalty;
+
+      if (this.hasAutoSnappedPlane && score >= this.lastPlaneScore - 0.12) {
+        return;
+      }
+
+      this.lastPlaneScore = score;
+      this.detectedSurfaceY = this._ballPos.y;
+      const firstLock = !this.hasAutoSnappedPlane;
+      this.hasAutoSnappedPlane = true;
+      this.arenaOrigin.y = this.detectedSurfaceY + this.settings.heightOffset;
+      this.syncAllTransforms();
+      void this.rebuildCurrentLevel(true);
+      if (firstLock) {
+        this.physicsSystem?.vfx.emitBurst(
+          this.arenaOrigin,
+          12,
+          [0x38bdf8, 0x4ade80],
+          0.75,
+          0.7
+        );
+        this.uiSystem?.showCallout('TABLE SURFACE LOCKED', '#38bdf8', 1600);
       }
     });
 
     const unsubVis = this.world.visibilityState.subscribe((vis) => {
       if (vis === VisibilityState.NonImmersive) {
         this.hasAutoSnappedPlane = false;
+        this.lastPlaneScore = Number.POSITIVE_INFINITY;
       }
       if (vis === VisibilityState.Hidden || vis === VisibilityState.VisibleBlurred) {
         if (
@@ -390,6 +486,10 @@ export class GameFlowSystem
         this.onRecenterTable();
       } else if (k === 'm') {
         this.onToggleMute();
+      } else if (k === '[') {
+        this.onAdjustUiScale(-UI_SCALE_STEP);
+      } else if (k === ']') {
+        this.onAdjustUiScale(UI_SCALE_STEP);
       } else if (k === 'p' || e.key === 'Escape') {
         if (this.isSubScreenOpen) {
           this.onCloseSubScreen();
@@ -579,6 +679,10 @@ export class GameFlowSystem
     }
 
     this.aimingSystem?.forceResetToPedestal();
+
+    if (this.isDepthOcclusionActive) {
+      this.syncDepthOccludables();
+    }
 
     if (!preserveRoundState) {
       this.resetRoundStats(cfg);
@@ -1095,6 +1199,25 @@ export class GameFlowSystem
     this.settings.showTrajectory = !this.settings.showTrajectory;
     this.saveSettings();
     this.uiSystem?.updateSettings(this.settings);
+  }
+
+  onAdjustUiScale(delta: number): void {
+    this.physicsSystem?.audio.playClick();
+    this.settings.uiScale = stepUiScale(this.settings.uiScale, delta);
+    this.saveSettings();
+    this.uiSystem?.setUiScale(this.settings.uiScale);
+    this.uiSystem?.syncLayout(this.arenaOrigin, this.arenaYaw);
+    this.uiSystem?.updateSettings(this.settings);
+  }
+
+  onResetUiScale(): void {
+    this.physicsSystem?.audio.playClick();
+    this.settings.uiScale = UI_SCALE_DEFAULT;
+    this.saveSettings();
+    this.uiSystem?.setUiScale(this.settings.uiScale);
+    this.uiSystem?.syncLayout(this.arenaOrigin, this.arenaYaw);
+    this.uiSystem?.updateSettings(this.settings);
+    this.uiSystem?.showCallout('MENU SIZE RESET', '#38bdf8', 1100);
   }
 
   onPause(): void {

@@ -2,16 +2,14 @@
   "version": "iwsdk.scene.v1",
   "units": "meters",
   "components": {
-    "com.iwsdk.components.IBLGradient": {
-      "sky": [0.92, 0.95, 1.0, 1],
-      "equator": [0.76, 0.8, 0.88, 1],
-      "ground": [0.35, 0.36, 0.42, 1],
-      "intensity": 0.32
+    "com.iwsdk.components.IBLTexture": {
+      "src": "room",
+      "intensity": 0.92
     }
   },
   "environment": {
     "toneMapping": "aces",
-    "exposure": 1.05,
+    "exposure": 1.08,
     "shadows": true,
     "shadowMapType": "pcf"
   },
@@ -27,7 +25,7 @@
       "components": {
         "ShadowCatcher": {
           "size": [8, 8],
-          "opacity": 0.28
+          "opacity": 0.34
         }
       }
     },
@@ -35,21 +33,21 @@
       "id": "key-light",
       "name": "Key Light",
       "transform": {
-        "position": [1.8, 4.2, 1.4],
-        "rotationDeg": [-54, 22, 0]
+        "position": [1.65, 3.8, 1.35],
+        "rotationDeg": [-56, 22, 0]
       },
       "components": {
         "DirectionalLight": {
-          "color": [1, 0.96, 0.89, 1],
-          "intensity": 2.2,
+          "color": [1, 0.96, 0.9, 1],
+          "intensity": 2.35,
           "castShadow": true,
           "shadowMapSize": "2048",
-          "shadowCameraSize": 3.5,
+          "shadowCameraSize": 2.8,
           "shadowCameraNear": 0.5,
-          "shadowCameraFar": 12,
+          "shadowCameraFar": 11,
           "shadowRadius": 4,
-          "shadowBias": -0.0004,
-          "shadowNormalBias": 0.015
+          "shadowBias": -0.00035,
+          "shadowNormalBias": 0.014
         }
       }
     },
@@ -58,9 +56,9 @@
       "name": "Fill Light",
       "components": {
         "HemisphereLight": {
-          "skyColor": [0.95, 0.96, 1.0, 1],
-          "groundColor": [0.46, 0.42, 0.36, 1],
-          "intensity": 1.1
+          "skyColor": [0.95, 0.97, 1.0, 1],
+          "groundColor": [0.44, 0.39, 0.33, 1],
+          "intensity": 0.95
         }
       }
     },
@@ -85,7 +83,7 @@
           "yawDeg": 0,
           "pitchDeg": -8,
           "targetWidthM": 0.62,
-          "targetHeightM": 0.46
+          "targetHeightM": 0.51
         }
       }
     },
@@ -184,8 +182,8 @@
           "offsetZ": -0.46,
           "yawDeg": 0,
           "pitchDeg": -6,
-          "targetWidthM": 0.58,
-          "targetHeightM": 0.44
+          "targetWidthM": 0.62,
+          "targetHeightM": 0.51
         }
       }
     },
@@ -235,7 +233,7 @@
           "yawDeg": 0,
           "pitchDeg": -6,
           "targetWidthM": 0.54,
-          "targetHeightM": 0.44
+          "targetHeightM": 0.49
         }
       }
     },

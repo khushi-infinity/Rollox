@@ -143,4 +143,13 @@
       <ButtonLabel id="btn-menu-xr-label">Enter XR</ButtonLabel>
     </Button>
   </div>
+  <div class="summary-box">
+    <span class="summary-text">Menu Size</span>
+    <div style="flex-direction: row; gap: 8px; align-items: center;">
+      <Button id="menu-scale-down"><ButtonLabel>-</ButtonLabel></Button>
+      <span id="menu-scale-val" style="color: #fde047; font-size: 14px; font-weight: 700; width: 52px; text-align: center;">100%</span>
+      <Button id="menu-scale-up"><ButtonLabel>+</ButtonLabel></Button>
+      <Button id="menu-scale-reset"><ButtonLabel>Reset</ButtonLabel></Button>
+    </div>
+  </div>
 </Panel>

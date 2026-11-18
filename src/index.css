@@ -5,7 +5,7 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0b101b;
+  background: radial-gradient(circle at 50% 35%, #162033 0%, #0b101b 75%, #060911 100%);
   color: #f8fafc;
   font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   overscroll-behavior: none;

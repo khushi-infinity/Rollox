@@ -99,6 +99,10 @@
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
       <ButtonLabel id="modal-secondary-label">Replay Level</ButtonLabel>
     </Button>
+    <Button id="modal-settings-btn" class="full-btn">
+      <ButtonIcon><Settings></Settings></ButtonIcon>
+      <ButtonLabel>Settings &amp; Menu Size</ButtonLabel>
+    </Button>
     <Button id="modal-tertiary-btn" class="full-btn">
       <ButtonIcon><List></List></ButtonIcon>
       <ButtonLabel id="modal-tertiary-label">Main Menu</ButtonLabel>

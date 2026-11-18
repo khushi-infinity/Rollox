@@ -1,6 +1,6 @@
 import './index.css';
 
-import {World} from '@iwsdk/core';
+import {DepthSensingSystem, World} from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 
 import {AimingSystem} from './systems/AimingSystem';
@@ -17,6 +17,7 @@ if (!container) {
 World.create(container, projectOptions)
   .then((world) => {
     world
+      .registerSystem(DepthSensingSystem)
       .registerSystem(RolloxPhysicsSystem)
       .registerSystem(AimingSystem)
       .registerSystem(SpatialUISystem)
