@@ -9,7 +9,14 @@ import {
 } from '../levels';
 import type {LevelConfig, ObstacleSpec} from '../types';
 
-export type CollisionTag = 'ball' | 'pin' | 'rail' | 'dwarf' | 'bumper' | 'deck';
+export type CollisionTag =
+  | 'ball'
+  | 'pin'
+  | 'rail'
+  | 'dwarf'
+  | 'bumper'
+  | 'deck'
+  | 'ground';
 
 export interface PhysicsPinEntity {
   index: number;
@@ -47,6 +54,8 @@ export class BowlingWorld {
   private eventQueue: RAPIER.EventQueue | null = null;
 
   private staticBodies: RAPIER.RigidBody[] = [];
+  private groundBody: RAPIER.RigidBody | null = null;
+  private groundColliderHandle: number | null = null;
   private ballBody: RAPIER.RigidBody | null = null;
   private ballColliderHandle: number | null = null;
   private ballMesh: THREE.Object3D | null = null;
@@ -67,6 +76,74 @@ export class BowlingWorld {
     this.world = physics.blendedWorld as unknown as RAPIER.World;
     this.eventQueue = physics.eventQueue as unknown as RAPIER.EventQueue;
     this.callbacks = callbacks;
+  }
+
+  /**
+   * Creates a fixed Rapier trimesh ground plane collider directly from the
+   * provided Three.js ground plane mesh so fallen balls/pins collide with the floor.
+   */
+  setGroundPlaneCollisionMesh(groundMesh: THREE.Mesh): void {
+    if (!this.world) return;
+
+    if (this.groundBody) {
+      if (this.groundColliderHandle !== null) {
+        this.colliderTags.delete(this.groundColliderHandle);
+      }
+      this.world.removeRigidBody(this.groundBody);
+      this.groundBody = null;
+      this.groundColliderHandle = null;
+    }
+
+    const geometry = groundMesh.geometry;
+    const posAttr = geometry.getAttribute('position');
+    if (!posAttr) return;
+
+    const vertices = new Float32Array(posAttr.count * 3);
+    for (let i = 0; i < posAttr.count; i++) {
+      vertices[i * 3] = posAttr.getX(i);
+      vertices[i * 3 + 1] = posAttr.getY(i);
+      vertices[i * 3 + 2] = posAttr.getZ(i);
+    }
+
+    const indexAttr = geometry.getIndex();
+    let indices: Uint32Array;
+    if (indexAttr) {
+      indices = new Uint32Array(indexAttr.count);
+      for (let i = 0; i < indexAttr.count; i++) {
+        indices[i] = indexAttr.getX(i);
+      }
+    } else {
+      indices = new Uint32Array(posAttr.count);
+      for (let i = 0; i < posAttr.count; i++) {
+        indices[i] = i;
+      }
+    }
+
+    groundMesh.updateWorldMatrix(true, false);
+    groundMesh.getWorldPosition(_tmpVec);
+    groundMesh.getWorldQuaternion(_quat);
+
+    const groundBody = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(_tmpVec.x, _tmpVec.y, _tmpVec.z)
+        .setRotation({
+          x: _quat.x,
+          y: _quat.y,
+          z: _quat.z,
+          w: _quat.w,
+        })
+    );
+    const groundCol = this.world.createCollider(
+      RAPIER.ColliderDesc.trimesh(vertices, indices)
+        .setFriction(0.65)
+        .setRestitution(0.32)
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+      groundBody
+    );
+
+    this.groundBody = groundBody;
+    this.groundColliderHandle = groundCol.handle;
+    this.colliderTags.set(groundCol.handle, 'ground');
   }
 
   setArenaOffset(offset: THREE.Vector3): void {
@@ -479,6 +556,7 @@ export class BowlingWorld {
         const involvesDwarf = tag1 === 'dwarf' || tag2 === 'dwarf';
         const involvesRail = tag1 === 'rail' || tag2 === 'rail';
         const involvesBumper = tag1 === 'bumper' || tag2 === 'bumper';
+        const involvesGround = tag1 === 'ground' || tag2 === 'ground';
 
         if (this.ballBody) {
           const bt = this.ballBody.translation();
@@ -502,7 +580,10 @@ export class BowlingWorld {
               _tmpVec.set(pt.x, pt.y, pt.z);
             }
             this.callbacks?.onPinImpact(_tmpVec, speed);
-          } else if (involvesBall && (involvesRail || involvesBumper)) {
+          } else if (
+            involvesBall &&
+            (involvesRail || involvesBumper || (involvesGround && speed > 0.35))
+          ) {
             this.callbacks?.onRailHit(_tmpVec);
           }
         }
@@ -575,10 +656,19 @@ export class BowlingWorld {
     this.obstacles = [];
 
     this.colliderTags.clear();
+    if (this.groundColliderHandle !== null) {
+      this.colliderTags.set(this.groundColliderHandle, 'ground');
+    }
   }
 
   dispose(): void {
     this.clearLevel();
+    if (this.world && this.groundBody) {
+      this.world.removeRigidBody(this.groundBody);
+    }
+    this.groundBody = null;
+    this.groundColliderHandle = null;
+    this.colliderTags.clear();
     this.world = null;
     this.eventQueue = null;
   }

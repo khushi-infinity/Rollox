@@ -654,3 +654,31 @@ export function createRotatingBumperMesh(
 
   return group;
 }
+
+/**
+ * Creates a horizontal ground plane mesh at y = 0 that receives cast shadows in
+ * both Mixed Reality passthrough and the Desktop Simulator while serving as the
+ * source geometry for the Rapier ground plane collision mesh.
+ */
+export function createGroundPlaneMesh(
+  width = 16,
+  depth = 16,
+  segments = 4
+): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
+  geometry.rotateX(-Math.PI / 2);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.ShadowMaterial({
+    color: 0x000000,
+    opacity: 0.28,
+  });
+
+  const groundMesh = new THREE.Mesh(geometry, material);
+  groundMesh.name = 'GroundPlaneCollisionMesh';
+  groundMesh.position.set(0, 0, 0);
+  groundMesh.receiveShadow = true;
+  groundMesh.xb = {pointerEvents: 'none'};
+  return groundMesh;
+}
+

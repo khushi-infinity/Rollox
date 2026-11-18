@@ -7,6 +7,7 @@ import {
   createBowlingBallMesh,
   createBowlingPinMesh,
   createDwarfCharacterMesh,
+  createGroundPlaneMesh,
   createLaneSegmentMesh,
   createPinDeckBackdrop,
   createProceduralAssets,
@@ -133,6 +134,7 @@ export class RolloxGame extends xb.Script {
   private arenaOrigin = new THREE.Vector3(0, ARENA_TABLE_Y, ARENA_ORIGIN_Z);
   private levelGroup = new THREE.Group();
   private levelDisposables: Array<{dispose: () => void}> = [];
+  private groundPlaneMesh: THREE.Mesh | null = null;
 
   private ballGroup!: THREE.Group;
   private ballGrabTarget!: BallGrabTarget;
@@ -213,6 +215,12 @@ export class RolloxGame extends xb.Script {
     this.setupLighting();
     this.assets = createProceduralAssets(maxAnisotropy);
 
+    this.groundPlaneMesh = createGroundPlaneMesh();
+    this.add(this.groundPlaneMesh);
+    if (this.bowlingWorld.isReady) {
+      this.bowlingWorld.setGroundPlaneCollisionMesh(this.groundPlaneMesh);
+    }
+
     this.add(this.levelGroup);
     this.add(this.vfx);
 
@@ -256,6 +264,9 @@ export class RolloxGame extends xb.Script {
         this.vfx.emitBurst(worldPos, 3, [0x7dd3fc, 0xfde68a], 0.55, 0.55);
       },
     });
+    if (this.groundPlaneMesh) {
+      this.bowlingWorld.setGroundPlaneCollisionMesh(this.groundPlaneMesh);
+    }
     this.bowlingWorld.setArenaOffset(this.arenaOrigin);
     this.rebuildPhysicsForCurrentLevel();
   }
@@ -1163,6 +1174,8 @@ export class RolloxGame extends xb.Script {
     (this.slingshotLine?.material as THREE.Material | undefined)?.dispose();
     this.trajectoryDots?.geometry.dispose();
     (this.trajectoryDots?.material as THREE.Material | undefined)?.dispose();
+    this.groundPlaneMesh?.geometry.dispose();
+    (this.groundPlaneMesh?.material as THREE.Material | undefined)?.dispose();
     super.dispose();
   }
 }
