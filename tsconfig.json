@@ -1,29 +1,18 @@
 {
   "compilerOptions": {
-    "outDir": "build",
-    "target": "es2024",
-    "module": "es2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable", "ESNext.Temporal"],
-    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
     "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": false,
     "forceConsistentCasingInFileNames": true,
-    "rootDir": "src",
-    "sourceMap": true,
-    "importHelpers": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
-    "types": ["dom-speech-recognition", "node"],
-    "paths": {
-      "rapier3d": ["./node_modules/@dimforge/rapier3d-simd-compat/rapier"],
-      "troika-three-text": [
-        "./node_modules/troika-types/packages/troika-three-text/dist/src/index"
-      ]
-    }
+    "types": ["vite/client", "@iwsdk/vite-plugin-dev/client", "node"]
   },
-  "include": ["src/**/*.ts", "types.d.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "types.d.ts"]
 }

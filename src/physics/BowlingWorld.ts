@@ -1,6 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-simd-compat';
 import * as THREE from 'three';
-import * as xb from 'xrblocks';
 
 import {
   BALL_RADIUS,
@@ -15,6 +14,8 @@ export type CollisionTag =
   | 'rail'
   | 'dwarf'
   | 'bumper'
+  | 'movingGate'
+  | 'slidingBarrier'
   | 'deck'
   | 'ground';
 
@@ -22,7 +23,7 @@ export interface PhysicsPinEntity {
   index: number;
   body: RAPIER.RigidBody;
   colliderHandles: number[];
-  mesh: THREE.Object3D;
+  mesh: THREE.Object3D | null;
   fallen: boolean;
   initialPos: THREE.Vector3;
 }
@@ -31,7 +32,8 @@ export interface PhysicsObstacleEntity {
   spec: ObstacleSpec;
   body: RAPIER.RigidBody;
   colliderHandles: number[];
-  mesh: THREE.Object3D;
+  mesh: THREE.Object3D | null;
+  gateBarMesh?: THREE.Object3D | null;
   phase: number;
   baseWorldPos: THREE.Vector3;
   currentWorldPos: THREE.Vector3;
@@ -40,6 +42,7 @@ export interface PhysicsObstacleEntity {
 export interface CollisionCallback {
   onPinImpact: (worldPos: THREE.Vector3, speed: number) => void;
   onDwarfHit: (worldPos: THREE.Vector3) => void;
+  onObstacleHit: (worldPos: THREE.Vector3, tag: CollisionTag) => void;
   onRailHit: (worldPos: THREE.Vector3) => void;
 }
 
@@ -49,6 +52,20 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _pinUp = new THREE.Vector3();
 const _tmpVec = new THREE.Vector3();
 
+let _rapierInitPromise: Promise<void> | null = null;
+
+export async function ensureRapierInitialized(): Promise<void> {
+  if (!_rapierInitPromise) {
+    _rapierInitPromise = RAPIER.init();
+  }
+  await _rapierInitPromise;
+}
+
+/**
+ * Pure Rapier3D physics simulation backing Rollox's IWSDK RolloxPhysicsSystem.
+ * Manages static lane/rail/ramp colliders, trimesh ground floor, CCD bowling ball,
+ * two-part compound-collider bowling pins, and kinematic fantasy obstacles.
+ */
 export class BowlingWorld {
   private world: RAPIER.World | null = null;
   private eventQueue: RAPIER.EventQueue | null = null;
@@ -65,6 +82,8 @@ export class BowlingWorld {
 
   private colliderTags = new Map<number, CollisionTag>();
   private arenaOffset = new THREE.Vector3();
+  private arenaYaw = 0;
+  private arenaQuat = new THREE.Quaternion();
   private callbacks?: CollisionCallback;
   private ballBodyDynamic = false;
 
@@ -72,16 +91,18 @@ export class BowlingWorld {
     return this.world !== null;
   }
 
-  init(physics: xb.Physics, callbacks?: CollisionCallback): void {
-    this.world = physics.blendedWorld as unknown as RAPIER.World;
-    this.eventQueue = physics.eventQueue as unknown as RAPIER.EventQueue;
+  async init(callbacks?: CollisionCallback): Promise<void> {
+    await ensureRapierInitialized();
+    this.world = new RAPIER.World({x: 0, y: -9.81, z: 0});
+    this.eventQueue = new RAPIER.EventQueue(true);
     this.callbacks = callbacks;
   }
 
-  /**
-   * Creates a fixed Rapier trimesh ground plane collider directly from the
-   * provided Three.js ground plane mesh so fallen balls/pins collide with the floor.
-   */
+  setCallbacks(callbacks: CollisionCallback): void {
+    this.callbacks = callbacks;
+  }
+
+  /** Creates a fixed Rapier trimesh ground plane collider for real floor bounces. */
   setGroundPlaneCollisionMesh(groundMesh: THREE.Mesh): void {
     if (!this.world) return;
 
@@ -146,15 +167,28 @@ export class BowlingWorld {
     this.colliderTags.set(groundCol.handle, 'ground');
   }
 
-  setArenaOffset(offset: THREE.Vector3): void {
+  setArenaOffset(offset: THREE.Vector3, yawRad = this.arenaYaw): void {
     this.arenaOffset.copy(offset);
+    this.arenaYaw = yawRad;
+    this.arenaQuat.setFromAxisAngle(_up, yawRad);
+  }
+
+  getArenaOffset(): THREE.Vector3 {
+    return this.arenaOffset;
+  }
+
+  private localToWorldVec(lx: number, ly: number, lz: number, out = new THREE.Vector3()): THREE.Vector3 {
+    return out.set(lx, ly, lz).applyQuaternion(this.arenaQuat).add(this.arenaOffset);
   }
 
   buildLevelPhysics(
     level: LevelConfig,
-    ballMesh: THREE.Object3D,
-    pinMeshes: THREE.Object3D[],
-    obstacleMeshes: Map<string, THREE.Object3D>
+    ballMesh: THREE.Object3D | null,
+    pinMeshes: Array<THREE.Object3D | null>,
+    obstacleVisuals: Map<
+      string,
+      {root: THREE.Object3D | null; gateBar?: THREE.Object3D | null}
+    >
   ): void {
     this.clearLevel();
     if (!this.world) return;
@@ -163,16 +197,15 @@ export class BowlingWorld {
 
     // 1. Fixed lane segments, rails & backstop
     for (const seg of level.segments) {
-      const wx = this.arenaOffset.x + seg.x;
-      const wy = this.arenaOffset.y + seg.y;
-      const wz = this.arenaOffset.z + seg.z;
+      this.localToWorldVec(seg.x, seg.y, seg.z, _tmpVec);
 
       _euler.set(seg.pitchX ?? 0, seg.yawY ?? 0, 0, 'YXZ');
       _quat.setFromEuler(_euler);
+      _quat.premultiply(this.arenaQuat);
 
       const segBody = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.fixed()
-          .setTranslation(wx, wy, wz)
+          .setTranslation(_tmpVec.x, _tmpVec.y, _tmpVec.z)
           .setRotation({
             x: _quat.x,
             y: _quat.y,
@@ -182,7 +215,6 @@ export class BowlingWorld {
       );
       this.staticBodies.push(segBody);
 
-      // Deck slab collider (top surface at local y = 0)
       const deckCol = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(
           seg.width / 2,
@@ -215,12 +247,21 @@ export class BowlingWorld {
     }
 
     // Backstop wall behind the pin deck
+    this.localToWorldVec(
+      level.pinDeck.x,
+      level.pinDeck.y + 0.06,
+      level.pinDeck.z - 0.32,
+      _tmpVec
+    );
     const backBody = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(
-        this.arenaOffset.x + level.pinDeck.x,
-        this.arenaOffset.y + level.pinDeck.y + 0.06,
-        this.arenaOffset.z + level.pinDeck.z - 0.32
-      )
+      RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(_tmpVec.x, _tmpVec.y, _tmpVec.z)
+        .setRotation({
+          x: this.arenaQuat.x,
+          y: this.arenaQuat.y,
+          z: this.arenaQuat.z,
+          w: this.arenaQuat.w,
+        })
     );
     this.staticBodies.push(backBody);
     const backCol = this.world.createCollider(
@@ -231,20 +272,15 @@ export class BowlingWorld {
     );
     this.colliderTags.set(backCol.handle, 'rail');
 
-    // 2. Dynamic Bowling Ball (starts kinematic/resting on pedestal until launched)
+    // 2. Bowling Ball
     this.createOrResetBall(new THREE.Vector3(0, BALL_RADIUS, 0));
 
-    // 3. Dynamic Bowling Pins
+    // 3. Compound-Collider Bowling Pins
     const placements = generatePinFormation(level.pinFormation, level.pinDeck);
     for (let i = 0; i < placements.length; i++) {
       const p = placements[i];
-      const mesh = pinMeshes[i];
-      if (!mesh) continue;
-      const worldPos = new THREE.Vector3(
-        this.arenaOffset.x + p.x,
-        this.arenaOffset.y + p.y + 0.0605,
-        this.arenaOffset.z + p.z
-      );
+      const mesh = pinMeshes[i] ?? null;
+      const worldPos = this.localToWorldVec(p.x, p.y + 0.0605, p.z);
 
       const pinBody = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
@@ -285,16 +321,12 @@ export class BowlingWorld {
       });
     }
 
-    // 4. Kinematic Obstacles (Dwarf & Rotating Bumper)
+    // 4. Kinematic Obstacles (Dwarf, Rotating Bumper, Moving Gate, Sliding Barrier)
     for (const obs of level.obstacles) {
-      const mesh = obstacleMeshes.get(obs.id);
-      if (!mesh) continue;
+      const visual = obstacleVisuals.get(obs.id);
+      const mesh = visual?.root ?? null;
 
-      const baseWorldPos = new THREE.Vector3(
-        this.arenaOffset.x + obs.x,
-        this.arenaOffset.y + obs.y,
-        this.arenaOffset.z + obs.z
-      );
+      const baseWorldPos = this.localToWorldVec(obs.x, obs.y, obs.z);
 
       if (obs.kind === 'dwarf') {
         const body = this.world.createRigidBody(
@@ -321,7 +353,7 @@ export class BowlingWorld {
           baseWorldPos,
           currentWorldPos: baseWorldPos.clone(),
         });
-      } else {
+      } else if (obs.kind === 'bumper') {
         const radius = obs.radius ?? 0.12;
         const body = this.world.createRigidBody(
           RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -353,6 +385,56 @@ export class BowlingWorld {
           baseWorldPos,
           currentWorldPos: baseWorldPos.clone(),
         });
+      } else if (obs.kind === 'movingGate') {
+        const body = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+            baseWorldPos.x,
+            baseWorldPos.y + 0.035,
+            baseWorldPos.z
+          )
+        );
+        const col = this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(0.12, 0.022, 0.014)
+            .setRestitution(0.55)
+            .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+          body
+        );
+        this.colliderTags.set(col.handle, 'movingGate');
+        this.obstacles.push({
+          spec: obs,
+          body,
+          colliderHandles: [col.handle],
+          mesh,
+          gateBarMesh: visual?.gateBar ?? null,
+          phase: 0,
+          baseWorldPos,
+          currentWorldPos: baseWorldPos.clone(),
+        });
+      } else {
+        // slidingBarrier
+        const body = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+            baseWorldPos.x,
+            baseWorldPos.y + 0.032,
+            baseWorldPos.z
+          )
+        );
+        const col = this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(0.055, 0.032, 0.022)
+            .setRestitution(0.75)
+            .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+          body
+        );
+        this.colliderTags.set(col.handle, 'slidingBarrier');
+        this.obstacles.push({
+          spec: obs,
+          body,
+          colliderHandles: [col.handle],
+          mesh,
+          phase: 0,
+          baseWorldPos,
+          currentWorldPos: baseWorldPos.clone(),
+        });
       }
     }
   }
@@ -368,14 +450,12 @@ export class BowlingWorld {
       this.ballColliderHandle = null;
     }
 
-    const wx = this.arenaOffset.x + localPos.x;
-    const wy = this.arenaOffset.y + localPos.y;
-    const wz = this.arenaOffset.z + localPos.z;
+    this.localToWorldVec(localPos.x, localPos.y, localPos.z, _tmpVec);
 
     const desc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
-      wx,
-      wy,
-      wz
+      _tmpVec.x,
+      _tmpVec.y,
+      _tmpVec.z
     );
     this.ballBody = this.world.createRigidBody(desc);
     this.ballBodyDynamic = false;
@@ -415,7 +495,6 @@ export class BowlingWorld {
     spinVelocity: THREE.Vector3
   ): void {
     if (!this.world) return;
-    // Recreate as dynamic with CCD enabled for clean crisp launch
     if (this.ballBody) {
       if (this.ballColliderHandle !== null) {
         this.colliderTags.delete(this.ballColliderHandle);
@@ -449,12 +528,8 @@ export class BowlingWorld {
   resetBallToPedestal(localPos: THREE.Vector3): void {
     this.createOrResetBall(localPos);
     if (this.ballMesh) {
-      this.ballMesh.position.set(
-        this.arenaOffset.x + localPos.x,
-        this.arenaOffset.y + localPos.y,
-        this.arenaOffset.z + localPos.z
-      );
-      this.ballMesh.quaternion.identity();
+      this.localToWorldVec(localPos.x, localPos.y, localPos.z, this.ballMesh.position);
+      this.ballMesh.quaternion.copy(this.arenaQuat);
     }
   }
 
@@ -479,7 +554,7 @@ export class BowlingWorld {
     for (const pin of this.pins) {
       if (!pin.fallen) continue;
       pin.body.setEnabled(false);
-      pin.mesh.visible = false;
+      if (pin.mesh) pin.mesh.visible = false;
     }
   }
 
@@ -492,25 +567,44 @@ export class BowlingWorld {
     return {speed, y: t.y, z: t.z};
   }
 
-  stepObstaclesAndSync(dt: number, isRollingOrAiming: boolean): void {
+  /**
+   * Advances obstacles + Rapier world one fixed timestep and synchronizes Three.js
+   * object transforms and collision events.
+   */
+  step(dt: number, isBallDynamicSync: boolean): void {
+    if (!this.world) return;
+    this.world.timestep = dt;
+
     for (const obs of this.obstacles) {
       const spd = obs.spec.speed ?? 1.8;
       obs.phase += dt * spd;
+      const obsYaw = this.arenaYaw + (obs.spec.yawY ?? 0);
+      const axisX = Math.cos(obsYaw);
+      const axisZ = -Math.sin(obsYaw);
 
       if (obs.spec.kind === 'dwarf') {
         const range = obs.spec.patrolRadius ?? 0.14;
         const offsetX = Math.sin(obs.phase) * range;
-        const nx = obs.baseWorldPos.x + offsetX;
+        const nx = obs.baseWorldPos.x + axisX * offsetX;
         const ny = obs.baseWorldPos.y;
-        const nz = obs.baseWorldPos.z;
+        const nz = obs.baseWorldPos.z + axisZ * offsetX;
         obs.currentWorldPos.set(nx, ny, nz);
         obs.body.setNextKinematicTranslation({x: nx, y: ny + 0.062, z: nz});
-        // Face direction of movement slightly while keeping shield angled forward
-        const dirSign = Math.cos(obs.phase) >= 0 ? 1 : -1;
-        obs.mesh.position.set(nx, ny, nz);
-        obs.mesh.rotation.y = dirSign * 0.28;
-      } else {
-        const angle = obs.phase;
+        _euler.set(0, obsYaw, 0);
+        _quat.setFromEuler(_euler);
+        obs.body.setNextKinematicRotation({
+          x: _quat.x,
+          y: _quat.y,
+          z: _quat.z,
+          w: _quat.w,
+        });
+        if (obs.mesh) {
+          const dirSign = Math.cos(obs.phase) >= 0 ? 1 : -1;
+          obs.mesh.position.set(nx, ny, nz);
+          obs.mesh.rotation.y = obsYaw + dirSign * 0.28;
+        }
+      } else if (obs.spec.kind === 'bumper') {
+        const angle = obsYaw + obs.phase;
         _euler.set(0, angle, 0);
         _quat.setFromEuler(_euler);
         obs.body.setNextKinematicRotation({
@@ -519,16 +613,69 @@ export class BowlingWorld {
           z: _quat.z,
           w: _quat.w,
         });
-        obs.mesh.position.set(
-          obs.baseWorldPos.x,
-          obs.baseWorldPos.y,
-          obs.baseWorldPos.z
-        );
-        obs.mesh.quaternion.copy(_quat);
+        if (obs.mesh) {
+          obs.mesh.position.copy(obs.baseWorldPos);
+          obs.mesh.quaternion.copy(_quat);
+        }
+      } else if (obs.spec.kind === 'movingGate') {
+        // Predictable sinusoidal portcullis rise & lower
+        const lift = (Math.sin(obs.phase) * 0.5 + 0.5) * 0.095;
+        const ny = obs.baseWorldPos.y + 0.025 + lift;
+        obs.currentWorldPos.set(obs.baseWorldPos.x, ny, obs.baseWorldPos.z);
+        obs.body.setNextKinematicTranslation({
+          x: obs.baseWorldPos.x,
+          y: ny,
+          z: obs.baseWorldPos.z,
+        });
+        _euler.set(0, obsYaw, 0);
+        _quat.setFromEuler(_euler);
+        obs.body.setNextKinematicRotation({
+          x: _quat.x,
+          y: _quat.y,
+          z: _quat.z,
+          w: _quat.w,
+        });
+        if (obs.mesh) {
+          obs.mesh.position.copy(obs.baseWorldPos);
+          obs.mesh.quaternion.copy(_quat);
+        }
+        if (obs.gateBarMesh) {
+          obs.gateBarMesh.position.y = 0.025 + lift;
+        }
+      } else {
+        // slidingBarrier
+        const range = obs.spec.patrolRadius ?? 0.13;
+        const offsetX = Math.sin(obs.phase) * range;
+        const nx = obs.baseWorldPos.x + axisX * offsetX;
+        const nz = obs.baseWorldPos.z + axisZ * offsetX;
+        obs.currentWorldPos.set(nx, obs.baseWorldPos.y, nz);
+        obs.body.setNextKinematicTranslation({
+          x: nx,
+          y: obs.baseWorldPos.y + 0.032,
+          z: nz,
+        });
+        _euler.set(0, obsYaw, 0);
+        _quat.setFromEuler(_euler);
+        obs.body.setNextKinematicRotation({
+          x: _quat.x,
+          y: _quat.y,
+          z: _quat.z,
+          w: _quat.w,
+        });
+        if (obs.mesh) {
+          obs.mesh.position.set(nx, obs.baseWorldPos.y, nz);
+          obs.mesh.quaternion.copy(_quat);
+        }
       }
     }
 
-    if (this.ballBody && this.ballMesh && isRollingOrAiming && this.ballBodyDynamic) {
+    if (this.eventQueue) {
+      this.world.step(this.eventQueue);
+    } else {
+      this.world.step();
+    }
+
+    if (this.ballBody && this.ballMesh && isBallDynamicSync && this.ballBodyDynamic) {
       const t = this.ballBody.translation();
       const r = this.ballBody.rotation();
       this.ballMesh.position.set(t.x, t.y, t.z);
@@ -536,14 +683,13 @@ export class BowlingWorld {
     }
 
     for (const pin of this.pins) {
-      if (!pin.body.isEnabled()) continue;
+      if (!pin.body.isEnabled() || !pin.mesh) continue;
       const t = pin.body.translation();
       const r = pin.body.rotation();
       pin.mesh.position.set(t.x, t.y, t.z);
       pin.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     }
 
-    // Drain collision events for tactile sound & particle VFX
     if (this.eventQueue && this.callbacks) {
       this.eventQueue.drainCollisionEvents((h1, h2, started) => {
         if (!started) return;
@@ -556,6 +702,9 @@ export class BowlingWorld {
         const involvesDwarf = tag1 === 'dwarf' || tag2 === 'dwarf';
         const involvesRail = tag1 === 'rail' || tag2 === 'rail';
         const involvesBumper = tag1 === 'bumper' || tag2 === 'bumper';
+        const involvesGate = tag1 === 'movingGate' || tag2 === 'movingGate';
+        const involvesBarrier =
+          tag1 === 'slidingBarrier' || tag2 === 'slidingBarrier';
         const involvesGround = tag1 === 'ground' || tag2 === 'ground';
 
         if (this.ballBody) {
@@ -571,6 +720,16 @@ export class BowlingWorld {
             this.callbacks?.onDwarfHit(
               dwarfObs ? dwarfObs.currentWorldPos : _tmpVec
             );
+          } else if (
+            involvesBall &&
+            (involvesBumper || involvesGate || involvesBarrier)
+          ) {
+            const hitTag: CollisionTag = involvesBumper
+              ? 'bumper'
+              : involvesGate
+                ? 'movingGate'
+                : 'slidingBarrier';
+            this.callbacks?.onObstacleHit(_tmpVec, hitTag);
           } else if (involvesPin && (involvesBall || speed > 0.25)) {
             const pin = this.pins.find((p) =>
               p.colliderHandles.includes(tag1 === 'pin' ? h1 : h2)
@@ -582,7 +741,7 @@ export class BowlingWorld {
             this.callbacks?.onPinImpact(_tmpVec, speed);
           } else if (
             involvesBall &&
-            (involvesRail || involvesBumper || (involvesGround && speed > 0.35))
+            (involvesRail || (involvesGround && speed > 0.35))
           ) {
             this.callbacks?.onRailHit(_tmpVec);
           }
@@ -669,7 +828,13 @@ export class BowlingWorld {
     this.groundBody = null;
     this.groundColliderHandle = null;
     this.colliderTags.clear();
-    this.world = null;
-    this.eventQueue = null;
+    if (this.eventQueue) {
+      this.eventQueue.free();
+      this.eventQueue = null;
+    }
+    if (this.world) {
+      this.world.free();
+      this.world = null;
+    }
   }
 }

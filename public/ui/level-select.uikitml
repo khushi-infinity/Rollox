@@ -1,0 +1,131 @@
+<style>
+  .levels-root {
+    flex-direction: column;
+    width: 580px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-left: 20px;
+    padding-right: 20px;
+    gap: 10px;
+    background-color: #101726;
+    border-color: #3b4b6b;
+    border-width: 2px;
+    border-radius: 22px;
+  }
+  .header-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .heading {
+    color: #fde047;
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .sub {
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .level-card {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #182338;
+    border-color: #2f405f;
+    border-width: 1px;
+    border-radius: 14px;
+  }
+  .level-meta {
+    flex-direction: column;
+    gap: 2px;
+    flex-grow: 1;
+  }
+  .level-name {
+    color: #f8fafc;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .level-desc {
+    color: #94a3b8;
+    font-size: 13px;
+  }
+  .level-right {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+  .stars {
+    color: #fbbf24;
+    font-size: 16px;
+    font-weight: 700;
+  }
+</style>
+<Panel class="levels-root">
+  <div class="header-row">
+    <div class="heading">CAMPAIGN LEVELS</div>
+    <Button id="levels-back">
+      <ButtonIcon><ChevronLeft></ChevronLeft></ButtonIcon>
+      <ButtonLabel>Back</ButtonLabel>
+    </Button>
+  </div>
+  <div class="sub">Complete levels to unlock the next challenge. All levels remain playable from Quick Play.</div>
+
+  <div class="level-card">
+    <div class="level-meta">
+      <span id="lvl-name-0" class="level-name">1. Meadow Straight</span>
+      <span id="lvl-best-0" class="level-desc">Classic Miniature Alley | Best: 0</span>
+    </div>
+    <div class="level-right">
+      <span id="lvl-stars-0" class="stars">---</span>
+      <Button id="btn-lvl-0"><ButtonLabel>Play</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="level-card">
+    <div class="level-meta">
+      <span id="lvl-name-1" class="level-name">2. Serpent Zigzag</span>
+      <span id="lvl-best-1" class="level-desc">Angled Bank Curves | Best: 0</span>
+    </div>
+    <div class="level-right">
+      <span id="lvl-stars-1" class="stars">---</span>
+      <Button id="btn-lvl-1"><ButtonLabel id="btn-lvl-label-1">Play</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="level-card">
+    <div class="level-meta">
+      <span id="lvl-name-2" class="level-name">3. Skybridge Ramp</span>
+      <span id="lvl-best-2" class="level-desc">Elevated Crest &amp; Drop | Best: 0</span>
+    </div>
+    <div class="level-right">
+      <span id="lvl-stars-2" class="stars">---</span>
+      <Button id="btn-lvl-2"><ButtonLabel id="btn-lvl-label-2">Play</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="level-card">
+    <div class="level-meta">
+      <span id="lvl-name-3" class="level-name">4. Dwarf's Crossing</span>
+      <span id="lvl-best-3" class="level-desc">Barnaby Guardian | Best: 0</span>
+    </div>
+    <div class="level-right">
+      <span id="lvl-stars-3" class="stars">---</span>
+      <Button id="btn-lvl-3"><ButtonLabel id="btn-lvl-label-3">Play</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="level-card">
+    <div class="level-meta">
+      <span id="lvl-name-4" class="level-name">5. Crown Gauntlet</span>
+      <span id="lvl-best-4" class="level-desc">Ramp, Bumper &amp; Guardian | Best: 0</span>
+    </div>
+    <div class="level-right">
+      <span id="lvl-stars-4" class="stars">---</span>
+      <Button id="btn-lvl-4"><ButtonLabel id="btn-lvl-label-4">Play</ButtonLabel></Button>
+    </div>
+  </div>
+</Panel>

@@ -1,0 +1,153 @@
+<style>
+  .ws-root {
+    flex-direction: column;
+    width: 600px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+    padding-left: 18px;
+    padding-right: 18px;
+    gap: 9px;
+    background-color: #0f172a;
+    border-color: #f59e0b;
+    border-width: 2px;
+    border-radius: 22px;
+  }
+  .ws-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ws-title {
+    color: #fbbf24;
+    font-size: 23px;
+    font-weight: 700;
+  }
+  .ws-sub {
+    color: #cbd5e1;
+    font-size: 13px;
+  }
+  .section-title {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .row {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .compact-btn {
+    flex-grow: 1;
+    justify-content: center;
+  }
+  .selection-box {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background-color: #1e293b;
+    border-radius: 12px;
+  }
+  .sel-text {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .status-banner {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 12px;
+    background-color: #14532d;
+    border-color: #4ade80;
+    border-width: 1px;
+  }
+  .status-text {
+    color: #ecfdf5;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 17px;
+  }
+</style>
+<Panel class="ws-root">
+  <div class="ws-header">
+    <div>
+      <div class="ws-title">ALLEY WORKSHOP</div>
+      <div id="ws-summary" class="ws-sub">2 Modules | 1 Obstacle | Standard 10 Pins</div>
+    </div>
+    <Button id="ws-back-menu">
+      <ButtonIcon><ChevronLeft></ChevronLeft></ButtonIcon>
+      <ButtonLabel>Menu</ButtonLabel>
+    </Button>
+  </div>
+
+  <div class="section-title">ADD SNAPPED LANE MODULE</div>
+  <div class="row">
+    <Button id="ws-add-straight" class="compact-btn"><ButtonLabel>+ Straight</ButtonLabel></Button>
+    <Button id="ws-add-short" class="compact-btn"><ButtonLabel>+ Short</ButtonLabel></Button>
+    <Button id="ws-add-left" class="compact-btn"><ButtonLabel>+ Left</ButtonLabel></Button>
+    <Button id="ws-add-right" class="compact-btn"><ButtonLabel>+ Right</ButtonLabel></Button>
+  </div>
+  <div class="row">
+    <Button id="ws-add-zigzag" class="compact-btn"><ButtonLabel>+ Zigzag</ButtonLabel></Button>
+    <Button id="ws-add-ramp-up" class="compact-btn"><ButtonLabel>+ Ramp Up</ButtonLabel></Button>
+    <Button id="ws-add-ramp-down" class="compact-btn"><ButtonLabel>+ Ramp Dn</ButtonLabel></Button>
+    <Button id="ws-add-bridge" class="compact-btn"><ButtonLabel>+ Bridge</ButtonLabel></Button>
+  </div>
+
+  <div class="selection-box">
+    <span id="ws-selected-seg" class="sel-text">Selected Segment #1 (straight)</span>
+    <div class="row">
+      <Button id="ws-seg-prev"><ButtonIcon><ChevronLeft></ChevronLeft></ButtonIcon></Button>
+      <Button id="ws-seg-next"><ButtonIcon><ChevronRight></ChevronRight></ButtonIcon></Button>
+    </div>
+  </div>
+  <div class="row">
+    <Button id="ws-seg-left" class="compact-btn"><ButtonLabel>Move L</ButtonLabel></Button>
+    <Button id="ws-seg-right" class="compact-btn"><ButtonLabel>Move R</ButtonLabel></Button>
+    <Button id="ws-seg-fwd" class="compact-btn"><ButtonLabel>Move Fwd</ButtonLabel></Button>
+    <Button id="ws-seg-back" class="compact-btn"><ButtonLabel>Move Bk</ButtonLabel></Button>
+    <Button id="ws-seg-rot-l" class="compact-btn"><ButtonLabel>Rot L</ButtonLabel></Button>
+    <Button id="ws-seg-rot-r" class="compact-btn"><ButtonLabel>Rot R</ButtonLabel></Button>
+    <Button id="ws-seg-del" class="compact-btn"><ButtonIcon><Trash2></Trash2></ButtonIcon></Button>
+  </div>
+
+  <div class="section-title">ADD OR EDIT OBSTACLES</div>
+  <div class="row">
+    <Button id="ws-obs-dwarf" class="compact-btn"><ButtonLabel>+ Barnaby</ButtonLabel></Button>
+    <Button id="ws-obs-bumper" class="compact-btn"><ButtonLabel>+ Bumper</ButtonLabel></Button>
+    <Button id="ws-obs-gate" class="compact-btn"><ButtonLabel>+ Gate</ButtonLabel></Button>
+    <Button id="ws-obs-barrier" class="compact-btn"><ButtonLabel>+ Barrier</ButtonLabel></Button>
+    <Button id="ws-obs-move-l" class="compact-btn"><ButtonLabel>Obs L</ButtonLabel></Button>
+    <Button id="ws-obs-move-r" class="compact-btn"><ButtonLabel>Obs R</ButtonLabel></Button>
+    <Button id="ws-obs-del" class="compact-btn"><ButtonIcon><Trash2></Trash2></ButtonIcon></Button>
+  </div>
+
+  <div class="section-title">PIN FORMATION &amp; SIDE RAILS</div>
+  <div class="row">
+    <Button id="ws-pins-10" class="compact-btn"><ButtonLabel>10 Pins</ButtonLabel></Button>
+    <Button id="ws-pins-9" class="compact-btn"><ButtonLabel>Diamond 9</ButtonLabel></Button>
+    <Button id="ws-pins-8" class="compact-btn"><ButtonLabel>Split 8</ButtonLabel></Button>
+    <Button id="ws-pins-6" class="compact-btn"><ButtonLabel>Crown 6</ButtonLabel></Button>
+    <Button id="ws-rails-toggle" class="compact-btn"><ButtonLabel id="ws-rails-label">Rails: ON</ButtonLabel></Button>
+  </div>
+
+  <div id="ws-validation-box" class="status-banner">
+    <span id="ws-validation-text" class="status-text">Valid layout ready to bowl!</span>
+  </div>
+
+  <div class="row">
+    <Button id="ws-test-alley" class="compact-btn">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Test Alley</ButtonLabel>
+    </Button>
+    <Button id="ws-reset-layout" class="compact-btn">
+      <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
+      <ButtonLabel>Reset Layout</ButtonLabel>
+    </Button>
+  </div>
+</Panel>

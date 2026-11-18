@@ -1,27 +1,27 @@
-import RAPIER from '@dimforge/rapier3d-simd-compat';
-import * as xb from 'xrblocks';
+import './index.css';
 
-import {RolloxGame} from './RolloxGame';
+import {World} from '@iwsdk/core';
+import projectOptions from 'virtual:iwsdk-project';
 
-function startRollox(): void {
-  const options = new xb.Options();
-  options.setAppTitle('Rollox');
-  options.setAppDescription(
-    'Miniature mixed-reality bowling. Pinch & pull the ball back to aim, release to bowl!'
-  );
+import {AimingSystem} from './systems/AimingSystem';
+import {GameFlowSystem} from './systems/GameFlowSystem';
+import {RolloxPhysicsSystem} from './systems/PhysicsSystem';
+import {SpatialUISystem} from './systems/SpatialUISystem';
 
-  // Hands-first WebXR setup with reticles for comfortable seated play
-  options.enableHands();
-  options.hands.visualization = true;
-  options.enableReticles();
+const container = document.getElementById('scene-container') as HTMLElement;
 
-  // Enable real Rapier3D physics with collision event queue
-  options.physics.RAPIER = RAPIER as unknown as xb.RAPIERCompat;
-  options.physics.fps = 60;
-  options.physics.useEventQueue = true;
-
-  xb.add(new RolloxGame());
-  void xb.init(options);
+if (!container) {
+  throw new Error('[Rollox] Missing #scene-container element in index.html');
 }
 
-document.addEventListener('DOMContentLoaded', startRollox);
+World.create(container, projectOptions)
+  .then((world) => {
+    world
+      .registerSystem(RolloxPhysicsSystem)
+      .registerSystem(AimingSystem)
+      .registerSystem(SpatialUISystem)
+      .registerSystem(GameFlowSystem);
+  })
+  .catch((err) => {
+    console.error('[Rollox] Failed to initialize IWSDK World:', err);
+  });

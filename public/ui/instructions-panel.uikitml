@@ -1,0 +1,81 @@
+<style>
+  .inst-root {
+    flex-direction: column;
+    width: 560px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-left: 20px;
+    padding-right: 20px;
+    gap: 10px;
+    background-color: #101726;
+    border-color: #4ade80;
+    border-width: 2px;
+    border-radius: 22px;
+  }
+  .header-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .heading {
+    color: #4ade80;
+    font-size: 25px;
+    font-weight: 700;
+  }
+  .step-card {
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #182338;
+    border-color: #2f405f;
+    border-width: 1px;
+    border-radius: 14px;
+  }
+  .step-title {
+    color: #fde047;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .step-body {
+    color: #e2e8f0;
+    font-size: 14px;
+    line-height: 19px;
+  }
+</style>
+<Panel class="inst-root">
+  <div class="header-row">
+    <div class="heading">HOW TO PLAY ROLLOX</div>
+    <Button id="inst-back">
+      <ButtonIcon><ChevronLeft></ChevronLeft></ButtonIcon>
+      <ButtonLabel>Back</ButtonLabel>
+    </Button>
+  </div>
+
+  <div class="step-card">
+    <span class="step-title">1. Pinch &amp; Grab (Hands-First)</span>
+    <span class="step-body">Hold your thumb and index finger together on the glowing bowling ball. No controllers required! On desktop mouse, click and hold the ball to drag.</span>
+  </div>
+
+  <div class="step-card">
+    <span class="step-title">2. Pull Back &amp; Aim Sideways</span>
+    <span class="step-body">Pull smoothly toward your body to charge power (up to 24 cm). Move your hand left or right to curve your trajectory line around rails, ramps, and Barnaby the Dwarf.</span>
+  </div>
+
+  <div class="step-card">
+    <span class="step-title">3. Release to Launch</span>
+    <span class="step-body">Open your pinch cleanly to bowl! Pull too gently (under 8% power) and the ball snaps safely back to the tee so accidental taps never waste a shot.</span>
+  </div>
+
+  <div class="step-card">
+    <span class="step-title">4. Scoring &amp; Workshop</span>
+    <span class="step-body">Each pin is worth +10 pts. Clear Shot 1 for STRIKE (+50), Shot 2 for SPARE (+25), or build custom lanes in the Alley Workshop!</span>
+  </div>
+
+  <Button id="inst-start-tutorial" style="background-color: #0284c7; justify-content: center;">
+    <ButtonIcon><Hand></Hand></ButtonIcon>
+    <ButtonLabel>Replay Guided Onboarding</ButtonLabel>
+  </Button>
+</Panel>

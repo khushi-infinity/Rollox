@@ -1,0 +1,107 @@
+<style>
+  .modal-root {
+    flex-direction: column;
+    width: 480px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    padding-left: 22px;
+    padding-right: 22px;
+    gap: 12px;
+    background-color: #0f172a;
+    border-color: #fde047;
+    border-width: 2px;
+    border-radius: 24px;
+  }
+  .modal-eyebrow {
+    color: #38bdf8;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-align: center;
+  }
+  .modal-title {
+    color: #fde047;
+    font-size: 30px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .modal-stars {
+    color: #fbbf24;
+    font-size: 24px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .modal-summary {
+    color: #e2e8f0;
+    font-size: 16px;
+    line-height: 22px;
+    text-align: center;
+  }
+  .stats-grid {
+    flex-direction: row;
+    gap: 10px;
+  }
+  .stat-box {
+    flex-grow: 1;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    background-color: #182338;
+    border-radius: 14px;
+  }
+  .stat-lbl {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .stat-val {
+    color: #f8fafc;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .btn-col {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .full-btn {
+    width: 100%;
+    justify-content: center;
+  }
+</style>
+<Panel class="modal-root">
+  <span id="modal-eyebrow" class="modal-eyebrow">FRAME COMPLETE</span>
+  <span id="modal-title" class="modal-title">STRIKE!</span>
+  <span id="modal-stars" class="modal-stars">3 / 3 STARS</span>
+  <span id="modal-summary" class="modal-summary">All 10 pins cleared!</span>
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <span class="stat-lbl">PINS CLEARED</span>
+      <span id="modal-pins-val" class="stat-val">10 / 10</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">LEVEL SCORE</span>
+      <span id="modal-score-val" class="stat-val">150</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-lbl">TOTAL SCORE</span>
+      <span id="modal-total-val" class="stat-val">150</span>
+    </div>
+  </div>
+
+  <div class="btn-col">
+    <Button id="modal-primary-btn" class="full-btn" style="background-color: #0284c7;">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel id="modal-primary-label">Next Level</ButtonLabel>
+    </Button>
+    <Button id="modal-secondary-btn" class="full-btn">
+      <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
+      <ButtonLabel id="modal-secondary-label">Replay Level</ButtonLabel>
+    </Button>
+    <Button id="modal-tertiary-btn" class="full-btn">
+      <ButtonIcon><List></List></ButtonIcon>
+      <ButtonLabel id="modal-tertiary-label">Main Menu</ButtonLabel>
+    </Button>
+  </div>
+</Panel>

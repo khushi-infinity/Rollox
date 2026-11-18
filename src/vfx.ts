@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 
-const POOL_SIZE = 120;
+const POOL_SIZE = 140;
+const MOTES_COUNT = 26;
+const TRAIL_SIZE = 24;
+
 const _dummy = new THREE.Object3D();
 const _color = new THREE.Color();
 
@@ -21,31 +24,48 @@ interface ParticleState {
   vry: number;
 }
 
+interface AmbientMote {
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  phase: number;
+  speed: number;
+  radius: number;
+}
+
 /**
- * Zero-GC pooled InstancedMesh particle bursts for pin strikes, ball launches,
- * and dwarf shield deflections.
+ * Zero-GC pooled InstancedMesh particle bursts, rolling trail sparks,
+ * and subtle floating fantasy motes around the miniature alley.
  */
 export class ParticleBurstPool extends THREE.Group {
-  private mesh: THREE.InstancedMesh;
+  private burstMesh: THREE.InstancedMesh;
   private particles: ParticleState[] = [];
   private cursor = 0;
+
+  private trailMesh: THREE.InstancedMesh;
+  private trailParticles: ParticleState[] = [];
+  private trailCursor = 0;
+  private trailCooldown = 0;
+
+  private motesMesh: THREE.InstancedMesh;
+  private motes: AmbientMote[] = [];
+  private moteOrigin = new THREE.Vector3();
+  private moteClock = 0;
 
   constructor() {
     super();
     this.name = 'Rollox VFX Pool';
-    this.xb = {pointerEvents: 'none'};
 
-    const geometry = new THREE.OctahedronGeometry(0.012, 0);
-    const material = new THREE.MeshStandardMaterial({
+    const burstGeo = new THREE.OctahedronGeometry(0.012, 0);
+    const burstMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       roughness: 0.3,
       metalness: 0.2,
       emissive: 0x332200,
-      emissiveIntensity: 0.35,
+      emissiveIntensity: 0.4,
     });
-    this.mesh = new THREE.InstancedMesh(geometry, material, POOL_SIZE);
-    this.mesh.frustumCulled = false;
-    this.mesh.xb = {pointerEvents: 'none'};
+    this.burstMesh = new THREE.InstancedMesh(burstGeo, burstMat, POOL_SIZE);
+    this.burstMesh.frustumCulled = false;
 
     for (let i = 0; i < POOL_SIZE; i++) {
       this.particles.push({
@@ -67,13 +87,92 @@ export class ParticleBurstPool extends THREE.Group {
       _dummy.position.set(0, -10, 0);
       _dummy.scale.setScalar(0);
       _dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, _dummy.matrix);
+      this.burstMesh.setMatrixAt(i, _dummy.matrix);
       _color.setHex(0xfbbf24);
-      this.mesh.setColorAt(i, _color);
+      this.burstMesh.setColorAt(i, _color);
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.add(this.mesh);
+    this.burstMesh.instanceMatrix.needsUpdate = true;
+    if (this.burstMesh.instanceColor) this.burstMesh.instanceColor.needsUpdate = true;
+    this.add(this.burstMesh);
+
+    // Ball motion trail sparks
+    const trailGeo = new THREE.SphereGeometry(0.0085, 8, 6);
+    const trailMat = new THREE.MeshBasicMaterial({
+      color: 0x7dd3fc,
+      transparent: true,
+      opacity: 0.72,
+    });
+    this.trailMesh = new THREE.InstancedMesh(trailGeo, trailMat, TRAIL_SIZE);
+    this.trailMesh.frustumCulled = false;
+    for (let i = 0; i < TRAIL_SIZE; i++) {
+      this.trailParticles.push({
+        active: false,
+        life: 0,
+        maxLife: 0.35,
+        px: 0,
+        py: -10,
+        pz: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        scale: 0,
+        rx: 0,
+        ry: 0,
+        vrx: 0,
+        vry: 0,
+      });
+      _dummy.position.set(0, -10, 0);
+      _dummy.scale.setScalar(0);
+      _dummy.updateMatrix();
+      this.trailMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.trailMesh.instanceMatrix.needsUpdate = true;
+    this.add(this.trailMesh);
+
+    // Subtle enchanted motes floating over the miniature alley
+    const moteGeo = new THREE.OctahedronGeometry(0.005, 0);
+    const moteMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.65,
+    });
+    this.motesMesh = new THREE.InstancedMesh(moteGeo, moteMat, MOTES_COUNT);
+    this.motesMesh.frustumCulled = false;
+    for (let i = 0; i < MOTES_COUNT; i++) {
+      this.motes.push({
+        baseX: (Math.random() - 0.5) * 0.65,
+        baseY: 0.08 + Math.random() * 0.32,
+        baseZ: -Math.random() * 1.65,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.55 + Math.random() * 0.6,
+        radius: 0.02 + Math.random() * 0.025,
+      });
+    }
+    this.add(this.motesMesh);
+  }
+
+  setArenaOrigin(origin: THREE.Vector3): void {
+    this.moteOrigin.copy(origin);
+  }
+
+  emitTrail(pos: THREE.Vector3, dt: number): void {
+    this.trailCooldown -= dt;
+    if (this.trailCooldown > 0) return;
+    this.trailCooldown = 0.026;
+
+    const idx = this.trailCursor;
+    this.trailCursor = (this.trailCursor + 1) % TRAIL_SIZE;
+    const p = this.trailParticles[idx];
+    p.active = true;
+    p.life = 0;
+    p.maxLife = 0.28;
+    p.px = pos.x + (Math.random() - 0.5) * 0.015;
+    p.py = pos.y - 0.012 + Math.random() * 0.015;
+    p.pz = pos.z + (Math.random() - 0.5) * 0.015;
+    p.vx = 0;
+    p.vy = 0.05;
+    p.vz = 0;
+    p.scale = 0.9;
   }
 
   emitBurst(
@@ -110,28 +209,28 @@ export class ParticleBurstPool extends THREE.Group {
 
       const hex = palette[n % palette.length];
       _color.setHex(hex);
-      this.mesh.setColorAt(idx, _color);
+      this.burstMesh.setColorAt(idx, _color);
       colorDirty = true;
     }
-    if (colorDirty && this.mesh.instanceColor) {
-      this.mesh.instanceColor.needsUpdate = true;
+    if (colorDirty && this.burstMesh.instanceColor) {
+      this.burstMesh.instanceColor.needsUpdate = true;
     }
   }
 
   tick(dt: number): void {
-    let anyActive = false;
+    let anyBurstActive = false;
     const gravity = -3.8;
     for (let i = 0; i < POOL_SIZE; i++) {
       const p = this.particles[i];
       if (!p.active) continue;
-      anyActive = true;
+      anyBurstActive = true;
       p.life += dt;
       if (p.life >= p.maxLife) {
         p.active = false;
         _dummy.position.set(0, -10, 0);
         _dummy.scale.setScalar(0);
         _dummy.updateMatrix();
-        this.mesh.setMatrixAt(i, _dummy.matrix);
+        this.burstMesh.setMatrixAt(i, _dummy.matrix);
         continue;
       }
 
@@ -148,15 +247,62 @@ export class ParticleBurstPool extends THREE.Group {
       _dummy.rotation.set(p.rx, p.ry, 0);
       _dummy.scale.setScalar(Math.max(0.001, s));
       _dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, _dummy.matrix);
+      this.burstMesh.setMatrixAt(i, _dummy.matrix);
     }
-    if (anyActive) {
-      this.mesh.instanceMatrix.needsUpdate = true;
+    if (anyBurstActive) {
+      this.burstMesh.instanceMatrix.needsUpdate = true;
     }
+
+    let anyTrailActive = false;
+    for (let i = 0; i < TRAIL_SIZE; i++) {
+      const p = this.trailParticles[i];
+      if (!p.active) continue;
+      anyTrailActive = true;
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+        _dummy.position.set(0, -10, 0);
+        _dummy.scale.setScalar(0);
+        _dummy.updateMatrix();
+        this.trailMesh.setMatrixAt(i, _dummy.matrix);
+        continue;
+      }
+      p.py += p.vy * dt;
+      const s = p.scale * (1 - p.life / p.maxLife);
+      _dummy.position.set(p.px, p.py, p.pz);
+      _dummy.rotation.set(0, 0, 0);
+      _dummy.scale.setScalar(Math.max(0.001, s));
+      _dummy.updateMatrix();
+      this.trailMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    if (anyTrailActive) {
+      this.trailMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    // Subtle floating fantasy motes
+    this.moteClock += dt;
+    for (let i = 0; i < MOTES_COUNT; i++) {
+      const m = this.motes[i];
+      const t = this.moteClock * m.speed + m.phase;
+      _dummy.position.set(
+        this.moteOrigin.x + m.baseX + Math.sin(t) * m.radius,
+        this.moteOrigin.y + m.baseY + Math.cos(t * 1.3) * (m.radius * 0.7),
+        this.moteOrigin.z + m.baseZ + Math.cos(t * 0.8) * m.radius
+      );
+      _dummy.rotation.set(t, t * 0.7, 0);
+      _dummy.scale.setScalar(0.65 + 0.35 * Math.sin(t * 2));
+      _dummy.updateMatrix();
+      this.motesMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.motesMesh.instanceMatrix.needsUpdate = true;
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    this.burstMesh.geometry.dispose();
+    (this.burstMesh.material as THREE.Material).dispose();
+    this.trailMesh.geometry.dispose();
+    (this.trailMesh.material as THREE.Material).dispose();
+    this.motesMesh.geometry.dispose();
+    (this.motesMesh.material as THREE.Material).dispose();
   }
 }

@@ -1,0 +1,292 @@
+{
+  "version": "iwsdk.scene.v1",
+  "units": "meters",
+  "components": {
+    "com.iwsdk.components.IBLGradient": {
+      "sky": [0.92, 0.95, 1.0, 1],
+      "equator": [0.76, 0.8, 0.88, 1],
+      "ground": [0.35, 0.36, 0.42, 1],
+      "intensity": 0.32
+    }
+  },
+  "environment": {
+    "toneMapping": "aces",
+    "exposure": 1.05,
+    "shadows": true,
+    "shadowMapType": "pcf"
+  },
+  "resources": {},
+  "nodes": [
+    {
+      "id": "shadow-catcher",
+      "name": "Shadow Catcher",
+      "framingRole": "support",
+      "transform": {
+        "position": [0, 0.001, -0.85]
+      },
+      "components": {
+        "ShadowCatcher": {
+          "size": [8, 8],
+          "opacity": 0.28
+        }
+      }
+    },
+    {
+      "id": "key-light",
+      "name": "Key Light",
+      "transform": {
+        "position": [1.8, 4.2, 1.4],
+        "rotationDeg": [-54, 22, 0]
+      },
+      "components": {
+        "DirectionalLight": {
+          "color": [1, 0.96, 0.89, 1],
+          "intensity": 2.2,
+          "castShadow": true,
+          "shadowMapSize": "2048",
+          "shadowCameraSize": 3.5,
+          "shadowCameraNear": 0.5,
+          "shadowCameraFar": 12,
+          "shadowRadius": 4,
+          "shadowBias": -0.0004,
+          "shadowNormalBias": 0.015
+        }
+      }
+    },
+    {
+      "id": "fill-light",
+      "name": "Fill Light",
+      "components": {
+        "HemisphereLight": {
+          "skyColor": [0.95, 0.96, 1.0, 1],
+          "groundColor": [0.46, 0.42, 0.36, 1],
+          "intensity": 1.1
+        }
+      }
+    },
+    {
+      "id": "main-menu-panel",
+      "name": "Main Menu Panel",
+      "content": {
+        "type": "asset",
+        "asset": "main-menu-panel"
+      },
+      "transform": {
+        "position": [0, 1.36, -0.96],
+        "rotationDeg": [-8, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "main-menu",
+          "offsetX": 0,
+          "offsetY": 0.42,
+          "offsetZ": -0.48,
+          "yawDeg": 0,
+          "pitchDeg": -8,
+          "targetWidthM": 0.62,
+          "targetHeightM": 0.46
+        }
+      }
+    },
+    {
+      "id": "hud-panel",
+      "name": "HUD Scoreboard Panel",
+      "content": {
+        "type": "asset",
+        "asset": "hud-panel"
+      },
+      "transform": {
+        "position": [0, 1.46, -1.62],
+        "rotationDeg": [-8, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "hud",
+          "offsetX": 0,
+          "offsetY": 0.52,
+          "offsetZ": -1.14,
+          "yawDeg": 0,
+          "pitchDeg": -8,
+          "targetWidthM": 0.68,
+          "targetHeightM": 0.24
+        }
+      }
+    },
+    {
+      "id": "level-select-panel",
+      "name": "Level Select Panel",
+      "content": {
+        "type": "asset",
+        "asset": "level-select-panel"
+      },
+      "transform": {
+        "position": [0, 1.38, -0.96],
+        "rotationDeg": [-6, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "level-select",
+          "offsetX": 0,
+          "offsetY": 0.44,
+          "offsetZ": -0.48,
+          "yawDeg": 0,
+          "pitchDeg": -6,
+          "targetWidthM": 0.64,
+          "targetHeightM": 0.54
+        }
+      }
+    },
+    {
+      "id": "workshop-panel",
+      "name": "Alley Workshop Panel",
+      "content": {
+        "type": "asset",
+        "asset": "workshop-panel"
+      },
+      "transform": {
+        "position": [0.58, 1.38, -0.82],
+        "rotationDeg": [-6, -24, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "workshop",
+          "offsetX": 0.58,
+          "offsetY": 0.44,
+          "offsetZ": -0.34,
+          "yawDeg": -24,
+          "pitchDeg": -6,
+          "targetWidthM": 0.62,
+          "targetHeightM": 0.52
+        }
+      }
+    },
+    {
+      "id": "settings-panel",
+      "name": "Settings Panel",
+      "content": {
+        "type": "asset",
+        "asset": "settings-panel"
+      },
+      "transform": {
+        "position": [0, 1.38, -0.94],
+        "rotationDeg": [-6, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "settings",
+          "offsetX": 0,
+          "offsetY": 0.44,
+          "offsetZ": -0.46,
+          "yawDeg": 0,
+          "pitchDeg": -6,
+          "targetWidthM": 0.58,
+          "targetHeightM": 0.44
+        }
+      }
+    },
+    {
+      "id": "instructions-panel",
+      "name": "Instructions Panel",
+      "content": {
+        "type": "asset",
+        "asset": "instructions-panel"
+      },
+      "transform": {
+        "position": [0, 1.38, -0.94],
+        "rotationDeg": [-6, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "instructions",
+          "offsetX": 0,
+          "offsetY": 0.44,
+          "offsetZ": -0.46,
+          "yawDeg": 0,
+          "pitchDeg": -6,
+          "targetWidthM": 0.6,
+          "targetHeightM": 0.48
+        }
+      }
+    },
+    {
+      "id": "modal-panel",
+      "name": "Pause and Results Panel",
+      "content": {
+        "type": "asset",
+        "asset": "modal-panel"
+      },
+      "transform": {
+        "position": [0, 1.36, -0.94],
+        "rotationDeg": [-6, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "modal",
+          "offsetX": 0,
+          "offsetY": 0.42,
+          "offsetZ": -0.46,
+          "yawDeg": 0,
+          "pitchDeg": -6,
+          "targetWidthM": 0.54,
+          "targetHeightM": 0.44
+        }
+      }
+    },
+    {
+      "id": "onboarding-panel",
+      "name": "Onboarding Tutorial Panel",
+      "content": {
+        "type": "asset",
+        "asset": "onboarding-panel"
+      },
+      "transform": {
+        "position": [0, 1.24, -0.78],
+        "rotationDeg": [-12, 0, 0]
+      },
+      "components": {
+        "RayInteractable": {},
+        "SpatialPanelTag": {
+          "panelId": "onboarding",
+          "offsetX": 0,
+          "offsetY": 0.3,
+          "offsetZ": -0.3,
+          "yawDeg": 0,
+          "pitchDeg": -12,
+          "targetWidthM": 0.52,
+          "targetHeightM": 0.24
+        }
+      }
+    },
+    {
+      "id": "callout-panel",
+      "name": "Callout Banner Panel",
+      "content": {
+        "type": "asset",
+        "asset": "callout-panel"
+      },
+      "transform": {
+        "position": [0, 1.28, -1.66],
+        "rotationDeg": [0, 0, 0]
+      },
+      "components": {
+        "SpatialPanelTag": {
+          "panelId": "callout",
+          "offsetX": 0,
+          "offsetY": 0.34,
+          "offsetZ": -1.18,
+          "yawDeg": 0,
+          "pitchDeg": 0,
+          "targetWidthM": 0.48,
+          "targetHeightM": 0.14
+        }
+      }
+    }
+  ]
+}

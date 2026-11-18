@@ -1,0 +1,109 @@
+<style>
+  .settings-root {
+    flex-direction: column;
+    width: 520px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-left: 20px;
+    padding-right: 20px;
+    gap: 12px;
+    background-color: #101726;
+    border-color: #38bdf8;
+    border-width: 2px;
+    border-radius: 22px;
+  }
+  .header-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .heading {
+    color: #38bdf8;
+    font-size: 25px;
+    font-weight: 700;
+  }
+  .setting-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #182338;
+    border-radius: 14px;
+    gap: 10px;
+  }
+  .label {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 600;
+    flex-grow: 1;
+  }
+  .btn-group {
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+  }
+  .value-txt {
+    color: #fde047;
+    font-size: 15px;
+    font-weight: 700;
+    width: 68px;
+    text-align: center;
+  }
+</style>
+<Panel class="settings-root">
+  <div class="header-row">
+    <div class="heading">SETTINGS &amp; SEATED FIT</div>
+    <Button id="set-back">
+      <ButtonIcon><ChevronLeft></ChevronLeft></ButtonIcon>
+      <ButtonLabel>Back</ButtonLabel>
+    </Button>
+  </div>
+
+  <div class="setting-row">
+    <span class="label">Master Volume</span>
+    <div class="btn-group">
+      <Button id="set-vol-down"><ButtonLabel>-</ButtonLabel></Button>
+      <span id="set-vol-val" class="value-txt">85%</span>
+      <Button id="set-vol-up"><ButtonLabel>+</ButtonLabel></Button>
+      <Button id="set-mute-btn"><ButtonLabel id="set-mute-label">Mute: OFF</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <span class="label">Power Curve</span>
+    <div class="btn-group">
+      <Button id="set-curve-linear"><ButtonLabel>Linear</ButtonLabel></Button>
+      <Button id="set-curve-smooth"><ButtonLabel>Smooth</ButtonLabel></Button>
+      <Button id="set-curve-snappy"><ButtonLabel>Snappy</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <span class="label">Aim Trajectory Dots</span>
+    <Button id="set-traj-toggle"><ButtonLabel id="set-traj-label">Trajectory: ON</ButtonLabel></Button>
+  </div>
+
+  <div class="setting-row">
+    <span class="label">Table Height &amp; Distance</span>
+    <div class="btn-group">
+      <Button id="set-h-down"><ButtonLabel>H-</ButtonLabel></Button>
+      <Button id="set-h-up"><ButtonLabel>H+</ButtonLabel></Button>
+      <Button id="set-d-near"><ButtonLabel>Closer</ButtonLabel></Button>
+      <Button id="set-d-far"><ButtonLabel>Farther</ButtonLabel></Button>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <Button id="set-recenter" style="flex-grow: 1;">
+      <ButtonIcon><Crosshair></Crosshair></ButtonIcon>
+      <ButtonLabel>Recenter in Front</ButtonLabel>
+    </Button>
+    <Button id="set-reset-place" style="flex-grow: 1;">
+      <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
+      <ButtonLabel>Reset Placement</ButtonLabel>
+    </Button>
+  </div>
+</Panel>

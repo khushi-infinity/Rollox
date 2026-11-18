@@ -1,0 +1,146 @@
+<style>
+  .menu-root {
+    flex-direction: column;
+    width: 560px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    padding-left: 22px;
+    padding-right: 22px;
+    gap: 12px;
+    background-color: #101726;
+    border-color: #3b4b6b;
+    border-width: 2px;
+    border-radius: 24px;
+  }
+  .brand-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .brand-left {
+    flex-direction: column;
+    gap: 3px;
+  }
+  .eyebrow {
+    color: #38bdf8;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+  .title {
+    color: #fde047;
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 42px;
+  }
+  .tagline {
+    color: #e2e8f0;
+    font-size: 16px;
+    line-height: 20px;
+  }
+  .xr-badge {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 14px;
+    background-color: #172554;
+    border-color: #38bdf8;
+    border-width: 1px;
+  }
+  .xr-badge-text {
+    color: #bae6fd;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .summary-box {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #182338;
+    border-color: #2b3a55;
+    border-width: 1px;
+    border-radius: 14px;
+  }
+  .summary-text {
+    color: #cbd5e1;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .grid-row {
+    flex-direction: row;
+    gap: 10px;
+  }
+  .nav-btn {
+    flex-grow: 1;
+    justify-content: flex-start;
+  }
+  .primary-btn {
+    flex-grow: 1;
+    justify-content: center;
+    background-color: #0284c7;
+  }
+  .footer-row {
+    flex-direction: row;
+    gap: 10px;
+  }
+</style>
+<Panel class="menu-root">
+  <div class="brand-row">
+    <div class="brand-left">
+      <div class="eyebrow">HANDS-FIRST MIXED-REALITY BOWLING</div>
+      <div class="title">ROLLOX</div>
+      <div class="tagline">Roll Beyond the Ordinary.</div>
+    </div>
+    <div class="xr-badge">
+      <span id="menu-progress-badge" class="xr-badge-text">Campaign: 1 / 5</span>
+    </div>
+  </div>
+  <div class="summary-box">
+    <span id="menu-status-line" class="summary-text">Pinch, pull back, aim, and release. No controllers needed.</span>
+  </div>
+  <div class="grid-row">
+    <Button id="btn-play-campaign" class="primary-btn">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Play Campaign</ButtonLabel>
+    </Button>
+    <Button id="btn-quick-play" class="nav-btn">
+      <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
+      <ButtonLabel>Quick Play</ButtonLabel>
+    </Button>
+  </div>
+  <div class="grid-row">
+    <Button id="btn-alley-workshop" class="nav-btn">
+      <ButtonIcon><Wrench></Wrench></ButtonIcon>
+      <ButtonLabel>Alley Workshop</ButtonLabel>
+    </Button>
+    <Button id="btn-level-select" class="nav-btn">
+      <ButtonIcon><Trophy></Trophy></ButtonIcon>
+      <ButtonLabel>Level Selection</ButtonLabel>
+    </Button>
+  </div>
+  <div class="grid-row">
+    <Button id="btn-settings" class="nav-btn">
+      <ButtonIcon><Settings></Settings></ButtonIcon>
+      <ButtonLabel>Settings</ButtonLabel>
+    </Button>
+    <Button id="btn-instructions" class="nav-btn">
+      <ButtonIcon><CircleHelp></CircleHelp></ButtonIcon>
+      <ButtonLabel>Instructions</ButtonLabel>
+    </Button>
+  </div>
+  <div class="footer-row">
+    <Button id="btn-menu-recenter" class="nav-btn">
+      <ButtonIcon><Crosshair></Crosshair></ButtonIcon>
+      <ButtonLabel>Recenter Table</ButtonLabel>
+    </Button>
+    <Button id="btn-menu-xr" class="nav-btn">
+      <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
+      <ButtonLabel id="btn-menu-xr-label">Enter XR</ButtonLabel>
+    </Button>
+  </div>
+</Panel>

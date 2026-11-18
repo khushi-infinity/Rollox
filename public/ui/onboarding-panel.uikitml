@@ -1,0 +1,73 @@
+<style>
+  .onb-root {
+    flex-direction: column;
+    width: 470px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+    padding-left: 18px;
+    padding-right: 18px;
+    gap: 8px;
+    background-color: #0f172a;
+    border-color: #38bdf8;
+    border-width: 2px;
+    border-radius: 18px;
+  }
+  .onb-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .onb-badge {
+    color: #38bdf8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+  .onb-title {
+    color: #fde047;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .onb-body {
+    color: #e2e8f0;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  .steps-row {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .step-pill {
+    flex-grow: 1;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    border-radius: 8px;
+    background-color: #1e293b;
+    border-color: #334155;
+    border-width: 1px;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-pill-text {
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 700;
+  }
+</style>
+<Panel class="onb-root">
+  <div class="onb-header">
+    <span id="onb-step-badge" class="onb-badge">GUIDED PRACTICE | STEP 1 OF 4</span>
+    <Button id="onb-skip-btn">
+      <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
+      <ButtonLabel>Skip Tutorial</ButtonLabel>
+    </Button>
+  </div>
+  <span id="onb-title" class="onb-title">1. Pinch the Glowing Ball</span>
+  <span id="onb-body" class="onb-body">Bring your thumb and index finger together on the ball (or click &amp; drag on desktop) to grab it.</span>
+  <div class="steps-row">
+    <div id="onb-pill-1" class="step-pill"><span class="step-pill-text">1. Pinch</span></div>
+    <div id="onb-pill-2" class="step-pill"><span class="step-pill-text">2. Pull Back</span></div>
+    <div id="onb-pill-3" class="step-pill"><span class="step-pill-text">3. Aim</span></div>
+    <div id="onb-pill-4" class="step-pill"><span class="step-pill-text">4. Release</span></div>
+  </div>
+</Panel>

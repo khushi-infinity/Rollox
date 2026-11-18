@@ -2,17 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, shrink-to-fit=no"
+    />
     <title>Rollox — Miniature Mixed-Reality Bowling</title>
-    <meta name="description" content="Hands-first miniature mixed-reality bowling game with real physics, modular lanes, and a custom alley builder." />
+    <meta
+      name="description"
+      content="Hands-first miniature mixed-reality bowling game built with Meta IWSDK: pinch, pull, aim, and roll through fantasy lanes."
+    />
     <meta property="og:title" content="Rollox — Miniature Mixed-Reality Bowling" />
-    <meta property="og:description" content="Hands-first miniature mixed-reality bowling game with real physics, modular lanes, and a custom alley builder." />
+    <meta
+      property="og:description"
+      content="Hands-first miniature mixed-reality bowling game built with Meta IWSDK: pinch, pull, aim, and roll through fantasy lanes."
+    />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="scene-container"></div>
+    <div id="xr-entry-dock" aria-label="Mixed Reality Controls">
+      <div class="dock-brand">
+        <span class="dock-title">ROLLOX</span>
+        <span class="dock-tagline">Roll Beyond the Ordinary.</span>
+      </div>
+      <div class="dock-actions">
+        <button id="btn-enter-xr" type="button">Enter Mixed Reality</button>
+        <button id="btn-desktop-recenter" type="button">Recenter Table</button>
+      </div>
+    </div>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>

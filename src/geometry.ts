@@ -30,11 +30,9 @@ function createLaneCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
   canvas.height = 1024;
   const ctx = canvas.getContext('2d')!;
 
-  // Warm honey-maple base
   ctx.fillStyle = '#c88c4b';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Parallel bowling lane planks
   const numPlanks = 12;
   const plankW = canvas.width / numPlanks;
   for (let i = 0; i < numPlanks; i++) {
@@ -42,7 +40,6 @@ function createLaneCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
     ctx.fillStyle = `rgb(${202 + shade}, ${142 + shade}, ${78 + shade})`;
     ctx.fillRect(i * plankW, 0, plankW - 1, canvas.height);
 
-    // Fine wood grain streaks
     ctx.strokeStyle = 'rgba(110, 62, 24, 0.14)';
     ctx.lineWidth = 1.5;
     for (let g = 0; g < 6; g++) {
@@ -60,12 +57,11 @@ function createLaneCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
       ctx.stroke();
     }
 
-    // Plank seam
     ctx.fillStyle = 'rgba(85, 45, 16, 0.3)';
     ctx.fillRect(i * plankW, 0, 1.5, canvas.height);
   }
 
-  // Subtle inlaid aiming chevrons near middle of lane
+  // Aiming chevrons
   ctx.fillStyle = 'rgba(105, 46, 16, 0.45)';
   const centerX = canvas.width / 2;
   for (let i = -3; i <= 3; i++) {
@@ -80,7 +76,7 @@ function createLaneCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // Foul / approach stripe
+  // Approach foul line
   ctx.fillStyle = 'rgba(138, 36, 26, 0.55)';
   ctx.fillRect(0, 960, canvas.width, 14);
 
@@ -105,7 +101,6 @@ function createBallCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 256);
 
-  // Swirling cosmic marble veins
   for (let i = 0; i < 18; i++) {
     ctx.strokeStyle =
       i % 2 === 0 ? 'rgba(56, 189, 248, 0.35)' : 'rgba(251, 191, 36, 0.28)';
@@ -117,7 +112,6 @@ function createBallCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
     ctx.stroke();
   }
 
-  // Three dark grip dots
   ctx.fillStyle = '#090d1a';
   for (const [dx, dy, r] of [
     [256, 92, 11],
@@ -141,15 +135,12 @@ function createPinCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
   canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
-  // Warm ivory maple enamel
   ctx.fillStyle = '#f8f2e6';
   ctx.fillRect(0, 0, 256, 256);
 
-  // Subtle wood base band
   ctx.fillStyle = '#d9c6a3';
   ctx.fillRect(0, 232, 256, 24);
 
-  // Classic double crimson neck stripes + gold trim
   ctx.fillStyle = '#dc2626';
   ctx.fillRect(0, 58, 256, 18);
   ctx.fillRect(0, 86, 256, 12);
@@ -162,9 +153,7 @@ function createPinCanvasTexture(maxAnisotropy: number): THREE.CanvasTexture {
   return tex;
 }
 
-/** Creates an authentic miniature bowling pin profile via LatheGeometry (bottom-center pivot at y=0). */
 function createPinLatheGeometry(): THREE.LatheGeometry {
-  // Normalized profile points scaled to PIN_HEIGHT (0.14m) and PIN_BASE_RADIUS (0.021m)
   const pts: THREE.Vector2[] = [
     new THREE.Vector2(0.0, 0.0),
     new THREE.Vector2(0.72 * PIN_BASE_RADIUS, 0.0),
@@ -271,7 +260,6 @@ export function createProceduralAssets(
   };
 }
 
-/** Builds a composite multi-part bowling ball mesh group (ball + inner brass core ring glow). */
 export function createBowlingBallMesh(assets: ProceduralAssets): THREE.Group {
   const group = new THREE.Group();
   group.name = 'Rollox Bowling Ball';
@@ -284,16 +272,13 @@ export function createBowlingBallMesh(assets: ProceduralAssets): THREE.Group {
   return group;
 }
 
-/** Builds a composite multi-part pin mesh (Lathe body + recessed brass foot ring). */
 export function createBowlingPinMesh(
   assets: ProceduralAssets,
   index: number
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = `Bowling Pin ${index + 1}`;
-  group.xb = {pointerEvents: 'none'};
 
-  // Offset geometry down by half height so group origin sits at center of mass
   const body = new THREE.Mesh(assets.pinGeometry, assets.pinMat);
   body.position.y = -PIN_HEIGHT * 0.42;
   body.castShadow = true;
@@ -311,21 +296,17 @@ export function createBowlingPinMesh(
   return group;
 }
 
-/**
- * Builds a composite modular lane segment with wooden deck, side gutters/rails,
- * brass corner rivets, and support legs/pilings for elevated sections.
- */
 export function createLaneSegmentMesh(
   spec: LaneSegmentSpec,
   assets: ProceduralAssets,
-  disposables: Array<{dispose: () => void}>
+  disposables: Array<{dispose: () => void}>,
+  highlighted = false
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = `Lane Segment ${spec.id}`;
   group.position.set(spec.x, spec.y, spec.z);
   group.rotation.set(spec.pitchX ?? 0, spec.yawY ?? 0, 0, 'YXZ');
 
-  // Main lane surface slab
   const deckGeo = new THREE.BoxGeometry(
     spec.width,
     LANE_DECK_THICKNESS,
@@ -338,7 +319,6 @@ export function createLaneSegmentMesh(
   deck.castShadow = true;
   group.add(deck);
 
-  // Dark timber under-frame apron
   const apronGeo = new THREE.BoxGeometry(
     spec.width + 0.036,
     LANE_DECK_THICKNESS * 0.85,
@@ -351,7 +331,6 @@ export function createLaneSegmentMesh(
   apron.castShadow = true;
   group.add(apron);
 
-  // Side rails + brass trim
   if (spec.hasRails !== false) {
     const railH = 0.032;
     const railW = 0.022;
@@ -373,7 +352,6 @@ export function createLaneSegmentMesh(
     }
   }
 
-  // Stone support pillars if elevated above table
   if (spec.y > 0.02) {
     const legH = spec.y;
     const legGeo = new THREE.CylinderGeometry(0.02, 0.026, legH, 10);
@@ -392,13 +370,27 @@ export function createLaneSegmentMesh(
     }
   }
 
+  if (highlighted) {
+    const outlineGeo = new THREE.BoxGeometry(
+      spec.width + 0.055,
+      LANE_DECK_THICKNESS + 0.02,
+      spec.length + 0.02
+    );
+    const outlineMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.75,
+    });
+    disposables.push(outlineGeo, outlineMat);
+    const outline = new THREE.Mesh(outlineGeo, outlineMat);
+    outline.position.y = -LANE_DECK_THICKNESS * 0.4;
+    group.add(outline);
+  }
+
   return group;
 }
 
-/**
- * Builds the decorative miniature fantasy backdrop at the pin deck:
- * glowing rune archway, side lantern posts, and soft table boundary.
- */
 export function createPinDeckBackdrop(
   deckPos: {x: number; y: number; z: number},
   accentColor: string,
@@ -408,7 +400,6 @@ export function createPinDeckBackdrop(
   const group = new THREE.Group();
   group.name = 'Pin Deck Fantasy Arch';
   group.position.set(deckPos.x, deckPos.y, deckPos.z - 0.24);
-  group.xb = {pointerEvents: 'none'};
 
   const archMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(accentColor),
@@ -418,7 +409,6 @@ export function createPinDeckBackdrop(
   });
   disposables.push(archMat);
 
-  // Backstop bumper cushion
   const backGeo = new THREE.BoxGeometry(0.5, 0.11, 0.045);
   disposables.push(backGeo);
   const backWall = new THREE.Mesh(backGeo, assets.woodDarkMat);
@@ -427,7 +417,6 @@ export function createPinDeckBackdrop(
   backWall.receiveShadow = true;
   group.add(backWall);
 
-  // Two carved stone arch pillars + brass caps
   const pillarGeo = new THREE.BoxGeometry(0.048, 0.24, 0.048);
   const capGeo = new THREE.CylinderGeometry(0.032, 0.036, 0.02, 8);
   const lanternGeo = new THREE.OctahedronGeometry(0.018, 0);
@@ -448,7 +437,6 @@ export function createPinDeckBackdrop(
     group.add(lantern);
   }
 
-  // Overhead curved arch lintel + glowing keystone
   const lintelGeo = new THREE.TorusGeometry(0.23, 0.02, 8, 24, Math.PI);
   const gemGeo = new THREE.OctahedronGeometry(0.025, 0);
   disposables.push(lintelGeo, gemGeo);
@@ -471,18 +459,14 @@ export interface DwarfRig {
   rightLeg: THREE.Mesh;
   shieldArm: THREE.Group;
   hammerArm: THREE.Group;
+  hitFlashUntil: number;
 }
 
-/**
- * Builds "Barnaby the Dwarf Guardian" as a 10-part composite procedural character
- * with animated legs, shield arm, helmet horns, and braided beard.
- */
 export function createDwarfCharacterMesh(
   disposables: Array<{dispose: () => void}>
 ): DwarfRig {
   const root = new THREE.Group();
   root.name = 'Barnaby the Dwarf Guardian';
-  root.xb = {pointerEvents: 'none'};
 
   const skinMat = new THREE.MeshStandardMaterial({
     color: 0xf4bfa0,
@@ -551,7 +535,6 @@ export function createDwarfCharacterMesh(
     hammerHeadGeo
   );
 
-  // Pivot bottom-center at y = 0
   const leftLeg = new THREE.Mesh(legGeo, bootMat);
   leftLeg.position.set(-0.014, 0.018, 0);
   leftLeg.castShadow = true;
@@ -593,7 +576,6 @@ export function createDwarfCharacterMesh(
     root.add(horn);
   }
 
-  // Shield facing player (+Z)
   const shieldArm = new THREE.Group();
   shieldArm.position.set(-0.032, 0.068, 0.018);
   const shield = new THREE.Mesh(shieldGeo, shieldWoodMat);
@@ -604,7 +586,6 @@ export function createDwarfCharacterMesh(
   shieldArm.add(shield, shieldBoss);
   root.add(shieldArm);
 
-  // Hammer arm
   const hammerArm = new THREE.Group();
   hammerArm.position.set(0.036, 0.072, 0.01);
   const handle = new THREE.Mesh(hammerHandleGeo, shieldWoodMat);
@@ -614,10 +595,9 @@ export function createDwarfCharacterMesh(
   hammerArm.add(handle, hammerHead);
   root.add(hammerArm);
 
-  return {root, leftLeg, rightLeg, shieldArm, hammerArm};
+  return {root, leftLeg, rightLeg, shieldArm, hammerArm, hitFlashUntil: 0};
 }
 
-/** Builds a composite Rotating Rune Bumper obstacle (pedestal hub + spinning crossbars). */
 export function createRotatingBumperMesh(
   radius: number,
   assets: ProceduralAssets,
@@ -625,7 +605,6 @@ export function createRotatingBumperMesh(
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = 'Rotating Rune Bumper';
-  group.xb = {pointerEvents: 'none'};
 
   const hubGeo = new THREE.CylinderGeometry(0.024, 0.03, 0.055, 16);
   const capGeo = new THREE.OctahedronGeometry(0.022, 0);
@@ -655,11 +634,79 @@ export function createRotatingBumperMesh(
   return group;
 }
 
-/**
- * Creates a horizontal ground plane mesh at y = 0 that receives cast shadows in
- * both Mixed Reality passthrough and the Desktop Simulator while serving as the
- * source geometry for the Rapier ground plane collision mesh.
- */
+export interface MovingGateRig {
+  root: THREE.Group;
+  gateBar: THREE.Group;
+}
+
+/** Builds a vertical rising/lowering fantasy rune portcullis gate obstacle. */
+export function createMovingGateMesh(
+  assets: ProceduralAssets,
+  disposables: Array<{dispose: () => void}>
+): MovingGateRig {
+  const root = new THREE.Group();
+  root.name = 'Moving Rune Gate';
+
+  const postGeo = new THREE.BoxGeometry(0.026, 0.16, 0.026);
+  const lintelGeo = new THREE.BoxGeometry(0.32, 0.022, 0.03);
+  const barGeo = new THREE.BoxGeometry(0.24, 0.044, 0.024);
+  const runeGeo = new THREE.OctahedronGeometry(0.015, 0);
+  disposables.push(postGeo, lintelGeo, barGeo, runeGeo);
+
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(postGeo, assets.stoneMat);
+    post.position.set(side * 0.15, 0.08, 0);
+    post.castShadow = true;
+    root.add(post);
+  }
+  const lintel = new THREE.Mesh(lintelGeo, assets.woodDarkMat);
+  lintel.position.set(0, 0.165, 0);
+  lintel.castShadow = true;
+  root.add(lintel);
+
+  const gateBar = new THREE.Group();
+  gateBar.position.set(0, 0.035, 0);
+  const bar = new THREE.Mesh(barGeo, assets.brassMat);
+  bar.castShadow = true;
+  const rune = new THREE.Mesh(runeGeo, assets.glowMat);
+  rune.position.set(0, 0.028, 0.014);
+  gateBar.add(bar, rune);
+  root.add(gateBar);
+
+  return {root, gateBar};
+}
+
+/** Builds a horizontal sliding stone & brass barrier block obstacle. */
+export function createSlidingBarrierMesh(
+  assets: ProceduralAssets,
+  disposables: Array<{dispose: () => void}>
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'Sliding Rune Barrier';
+
+  const blockGeo = new THREE.BoxGeometry(0.11, 0.062, 0.042);
+  const capGeo = new THREE.BoxGeometry(0.116, 0.012, 0.048);
+  const coreGeo = new THREE.OctahedronGeometry(0.016, 0);
+  disposables.push(blockGeo, capGeo, coreGeo);
+
+  const block = new THREE.Mesh(blockGeo, assets.stoneMat);
+  block.position.y = 0.032;
+  block.castShadow = true;
+  block.receiveShadow = true;
+  group.add(block);
+
+  const cap = new THREE.Mesh(capGeo, assets.brassMat);
+  cap.position.y = 0.066;
+  cap.castShadow = true;
+  group.add(cap);
+
+  const core = new THREE.Mesh(coreGeo, assets.glowMat);
+  core.position.y = 0.084;
+  group.add(core);
+
+  return group;
+}
+
 export function createGroundPlaneMesh(
   width = 16,
   depth = 16,
@@ -678,7 +725,5 @@ export function createGroundPlaneMesh(
   groundMesh.name = 'GroundPlaneCollisionMesh';
   groundMesh.position.set(0, 0, 0);
   groundMesh.receiveShadow = true;
-  groundMesh.xb = {pointerEvents: 'none'};
   return groundMesh;
 }
-

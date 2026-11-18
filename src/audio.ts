@@ -1,13 +1,15 @@
 /**
  * Procedural Web Audio synthesizer for Rollox tactile bowling feedback.
- * Zero external audio assets required; all sounds are synthesized on demand.
+ * Zero external audio assets required; all sounds respect master volume and mute.
  */
 export class RolloxAudio {
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private lastTickTime = 0;
   private lastPinSoundTime = 0;
+  private lastRollSoundTime = 0;
   private _muted = false;
+  private _volume = 0.85;
 
   get muted(): boolean {
     return this._muted;
@@ -17,13 +19,25 @@ export class RolloxAudio {
     this._muted = value;
   }
 
+  get volume(): number {
+    return this._volume;
+  }
+
+  set volume(value: number) {
+    this._volume = Math.max(0, Math.min(1, value));
+  }
+
   toggleMute(): boolean {
     this._muted = !this._muted;
     return this._muted;
   }
 
+  private effectiveGain(baseGain: number): number {
+    return Math.max(0.0005, baseGain * this._volume);
+  }
+
   private ensureContext(): AudioContext | null {
-    if (this._muted) return null;
+    if (this._muted || this._volume <= 0.01) return null;
     if (typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx =
@@ -57,8 +71,8 @@ export class RolloxAudio {
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(340, now);
     osc.frequency.exponentialRampToValueAtTime(560, now + 0.055);
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    gain.gain.setValueAtTime(this.effectiveGain(0.14), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.07);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
@@ -78,8 +92,8 @@ export class RolloxAudio {
     osc.type = 'sine';
     const freq = 260 + power01 * 420;
     osc.frequency.setValueAtTime(freq, now);
-    gain.gain.setValueAtTime(0.045, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+    gain.gain.setValueAtTime(this.effectiveGain(0.045), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.035);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
@@ -91,20 +105,21 @@ export class RolloxAudio {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Warm low thump
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(160 + power01 * 80, now);
     osc.frequency.exponentialRampToValueAtTime(62, now + 0.16);
-    gain.gain.setValueAtTime(0.22 * (0.5 + 0.5 * power01), now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+    gain.gain.setValueAtTime(
+      this.effectiveGain(0.22 * (0.5 + 0.5 * power01)),
+      now
+    );
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.17);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.18);
 
-    // Filtered air whoosh
     if (this.noiseBuffer) {
       const src = ctx.createBufferSource();
       src.buffer = this.noiseBuffer;
@@ -113,14 +128,44 @@ export class RolloxAudio {
       filter.frequency.setValueAtTime(520 + power01 * 700, now);
       filter.Q.value = 1.6;
       const nGain = ctx.createGain();
-      nGain.gain.setValueAtTime(0.11 * (0.4 + 0.6 * power01), now);
-      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      nGain.gain.setValueAtTime(
+        this.effectiveGain(0.11 * (0.4 + 0.6 * power01)),
+        now
+      );
+      nGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.22);
       src.connect(filter);
       filter.connect(nGain);
       nGain.connect(ctx.destination);
       src.start(now);
       src.stop(now + 0.23);
     }
+  }
+
+  /** Synthesizes gentle speed-modulated wooden alley rolling rumble while ball rolls. */
+  updateRollingRumble(speed: number, onLane: boolean): void {
+    if (!onLane || speed < 0.28) return;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.noiseBuffer) return;
+
+    const nowMs = performance.now();
+    if (nowMs - this.lastRollSoundTime < 90) return;
+    this.lastRollSoundTime = nowMs;
+
+    const intensity = Math.min(1, speed / 3.4);
+    const now = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(140 + intensity * 190, now);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(this.effectiveGain(0.045 * intensity), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.095);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + 0.1);
   }
 
   playPinHit(strength01 = 0.7): void {
@@ -131,9 +176,8 @@ export class RolloxAudio {
     this.lastPinSoundTime = nowMs;
 
     const now = ctx.currentTime;
-    const vol = Math.min(1, Math.max(0.2, strength01)) * 0.18;
+    const vol = this.effectiveGain(Math.min(1, Math.max(0.2, strength01)) * 0.18);
 
-    // Resonant hardwood clack (two detuned partials)
     const freqs = [920 + Math.random() * 140, 1480 + Math.random() * 200];
     for (let i = 0; i < freqs.length; i++) {
       const osc = ctx.createOscillator();
@@ -142,7 +186,7 @@ export class RolloxAudio {
       osc.frequency.setValueAtTime(freqs[i], now);
       osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.68, now + 0.08);
       gain.gain.setValueAtTime(vol * (i === 0 ? 1 : 0.6), now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.09);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
@@ -158,7 +202,7 @@ export class RolloxAudio {
       filter.Q.value = 2.5;
       const nGain = ctx.createGain();
       nGain.gain.setValueAtTime(vol * 0.6, now);
-      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+      nGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.045);
       src.connect(filter);
       filter.connect(nGain);
       nGain.connect(ctx.destination);
@@ -181,13 +225,34 @@ export class RolloxAudio {
     filter.type = 'lowpass';
     filter.frequency.value = 620;
 
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    gain.gain.setValueAtTime(this.effectiveGain(0.2), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.16);
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.17);
+  }
+
+  playObstacleClang(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(420, now);
+    osc.frequency.exponentialRampToValueAtTime(260, now + 0.11);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 680;
+    gain.gain.setValueAtTime(this.effectiveGain(0.14), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.12);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.13);
   }
 
   playRailTap(): void {
@@ -199,8 +264,8 @@ export class RolloxAudio {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(320, now);
     osc.frequency.exponentialRampToValueAtTime(170, now + 0.05);
-    gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    gain.gain.setValueAtTime(this.effectiveGain(0.08), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.055);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
@@ -227,8 +292,8 @@ export class RolloxAudio {
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(680, now);
-    gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    gain.gain.setValueAtTime(this.effectiveGain(0.08), now);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.04);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
@@ -249,8 +314,8 @@ export class RolloxAudio {
       const gain = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(0.13, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + durationSec);
+      gain.gain.setValueAtTime(this.effectiveGain(0.13), start);
+      gain.gain.exponentialRampToValueAtTime(0.0005, start + durationSec);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(start);
