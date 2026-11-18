@@ -144,10 +144,13 @@ export class GameFlowSystem
 
   private onboardingStep: 'pinch' | 'pull' | 'aim' | 'release' = 'pinch';
   private shotSimElapsed = 0;
+  private shotRealElapsed = 0;
   private ballStillTimer = 0;
   private ballReachedPinDeck = false;
   private sincePinDeckElapsed = 0;
   private settlingTimer = 0;
+  private slowFrameStreakSec = 0;
+  private lagHintShownThisSession = false;
   private _ballPos = new THREE.Vector3();
   private _localBallPos = new THREE.Vector3();
   private _headPos = new THREE.Vector3();
@@ -197,6 +200,8 @@ export class GameFlowSystem
       .addComponent(BowlingBall);
 
     this.groundMesh = createGroundPlaneMesh(16, 16, 4);
+    // Physics trimesh collider uses groundMesh; ShadowCatcher handles visual floor shadows in one pass
+    this.groundMesh.visible = false;
     this.groundEntity = this.world
       .createTransformEntity(this.groundMesh, {
         parent: this.world.sceneEntity,
@@ -270,6 +275,18 @@ export class GameFlowSystem
         }
         this.uiSystem?.updateHudPower(0, 'IDLE', false);
       },
+      onEmergencyResetRequested: () => {
+        this.onEmergencyUnstick();
+      },
+      onPauseRequested: () => {
+        if (this.sm.state === 'PAUSED') {
+          this.onModalResume();
+        } else if (this.isSubScreenOpen) {
+          this.onCloseSubScreen();
+        } else {
+          this.onPause();
+        }
+      },
     });
 
     this.uiSystem?.setActionHandler(this);
@@ -318,6 +335,7 @@ export class GameFlowSystem
 
     await this.loadCampaignLevel(0, false);
     this.sm.transitionGame('MAIN_MENU');
+    this.applyPerformanceSettings();
     this.refreshPanelsVisibility();
     this.uiSystem?.updateMainMenu(this.progress);
     this.uiSystem?.updateSettings(this.settings);
@@ -421,7 +439,7 @@ export class GameFlowSystem
       if (this.isDepthOcclusionActive) {
         if (!ent.hasComponent(DepthOccludable)) {
           ent.addComponent(DepthOccludable, {
-            mode: OcclusionShadersMode.MinMaxSoftOcclusion,
+            mode: OcclusionShadersMode.HardOcclusion,
           });
         }
       } else if (ent.hasComponent(DepthOccludable)) {
@@ -433,12 +451,28 @@ export class GameFlowSystem
     }
   }
 
+  private applyPerformanceSettings(): void {
+    const lowLag = Boolean(this.settings.lowLagMode);
+    this.physicsSystem?.vfx.setLowLagMode(lowLag);
+
+    const keyLight = this.world.getSceneObject<THREE.DirectionalLight>('key-light');
+    if (keyLight) {
+      keyLight.castShadow = !lowLag;
+    }
+    const shadowCatcher = this.world.getSceneObject<THREE.Object3D>('shadow-catcher');
+    if (shadowCatcher) {
+      shadowCatcher.visible = !lowLag;
+    }
+
+    this.isDepthOcclusionActive =
+      !lowLag && this.hasDepthSensingFeature(this.world.xrSession);
+    this.syncDepthOccludables();
+  }
+
   private setupXRListeners(): void {
     const onSessionStart = () => {
-      this.isDepthOcclusionActive = this.hasDepthSensingFeature(
-        this.world.xrSession
-      );
-      this.syncDepthOccludables();
+      this.slowFrameStreakSec = 0;
+      this.applyPerformanceSettings();
     };
     const onSessionEnd = () => {
       this.isDepthOcclusionActive = false;
@@ -498,7 +532,6 @@ export class GameFlowSystem
       this.hasAutoSnappedPlane = true;
       this.arenaBasePos.y = this.detectedSurfaceY;
       this.syncAllTransforms();
-      void this.rebuildCurrentLevel(true);
       this.physicsSystem?.vfx.emitBurst(
         this.arenaOrigin,
         12,
@@ -545,6 +578,8 @@ export class GameFlowSystem
         } else if (
           this.sm.state === 'READY' ||
           this.sm.state === 'AIMING' ||
+          this.sm.state === 'BALL_IN_MOTION' ||
+          this.sm.state === 'SETTLING' ||
           this.sm.state === 'WORKSHOP_TEST'
         ) {
           this.onPause();
@@ -554,11 +589,13 @@ export class GameFlowSystem
         ) {
           this.onBackToMenu();
         }
-      } else if (e.code === 'Space') {
+      } else if (e.code === 'Space' || e.key === 'Backspace') {
         if (
           this.sm.state === 'READY' ||
-          (this.sm.state === 'WORKSHOP_TEST' &&
-            this.workshopTestPhase === 'READY')
+          this.sm.state === 'AIMING' ||
+          this.sm.state === 'BALL_IN_MOTION' ||
+          this.sm.state === 'SETTLING' ||
+          this.sm.state === 'WORKSHOP_TEST'
         ) {
           this.onResetBall();
         }
@@ -580,7 +617,8 @@ export class GameFlowSystem
       this.arenaBasePos.y + this.settings.heightOffset,
       this.arenaBasePos.z
     );
-    this.physicsSystem?.setArenaOrigin(this.arenaOrigin, this.arenaYaw);
+    this.physicsSystem?.bowlingWorld.repositionArena(this.arenaOrigin, this.arenaYaw);
+    this.physicsSystem?.vfx.setArenaOrigin(this.arenaOrigin);
     this.aimingSystem?.setArenaTransform(this.arenaOrigin, this.arenaYaw);
     this.uiSystem?.syncLayout();
   }
@@ -839,13 +877,16 @@ export class GameFlowSystem
     power01: number
   ): void {
     if (this.roundResolved || this.isLevelLoading) return;
-    if (this.shotsLeft <= 0) return;
+    const isWorkshop = this.sm.state === 'WORKSHOP_TEST';
+    if (this.shotsLeft <= 0) {
+      this.finalizeShot(isWorkshop);
+      return;
+    }
 
     const physics = this.physicsSystem;
     if (!physics) return;
 
     const wasOnboarding = this.sm.state === 'ONBOARDING';
-    const isWorkshop = this.sm.state === 'WORKSHOP_TEST';
     if (isWorkshop) {
       if (
         this.workshopTestPhase !== 'READY' &&
@@ -869,6 +910,7 @@ export class GameFlowSystem
     this.shotsUsed += 1;
     this.shotsLeft = Math.max(0, this.shotsLeft - 1);
     this.shotSimElapsed = 0;
+    this.shotRealElapsed = 0;
     this.ballStillTimer = 0;
     this.ballReachedPinDeck = false;
     this.sincePinDeckElapsed = 0;
@@ -891,6 +933,27 @@ export class GameFlowSystem
     const physics = this.physicsSystem;
     if (!physics || this.roundResolved || this.isLevelLoading) return;
 
+    // Gentle non-blocking FPS monitor during active play
+    if (
+      !this.settings.lowLagMode &&
+      !this.lagHintShownThisSession &&
+      (state === 'READY' || state === 'AIMING' || state === 'BALL_IN_MOTION')
+    ) {
+      if (delta > 0.055 && delta < 0.35) {
+        this.slowFrameStreakSec += delta;
+        if (this.slowFrameStreakSec >= 3.5) {
+          this.lagHintShownThisSession = true;
+          this.uiSystem?.showCallout(
+            'EXPERIENCING LAG? ENABLE LOW-LAG IN SETTINGS',
+            '#fbbf24',
+            3000
+          );
+        }
+      } else if (delta <= 0.04) {
+        this.slowFrameStreakSec = Math.max(0, this.slowFrameStreakSec - delta * 0.5);
+      }
+    }
+
     const inTestFlight =
       state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'BALL_IN_MOTION';
     const inTestSettling =
@@ -898,7 +961,9 @@ export class GameFlowSystem
 
     if (state === 'BALL_IN_MOTION' || inTestFlight) {
       const simDt = Math.min(0.05, Math.max(0.0001, delta));
+      const realDt = Math.min(0.25, Math.max(0.0001, delta));
       this.shotSimElapsed += simDt;
+      this.shotRealElapsed += realDt;
       const elapsedSec = this.shotSimElapsed;
       const {speed, y} = physics.bowlingWorld.getBallWorldState(this._ballPos);
 
@@ -922,7 +987,7 @@ export class GameFlowSystem
       }
 
       if (speed < 0.14) {
-        this.ballStillTimer += simDt;
+        this.ballStillTimer += realDt;
       } else {
         this.ballStillTimer = 0;
       }
@@ -932,7 +997,7 @@ export class GameFlowSystem
       const stoppedOnLane = elapsedSec > 0.35 && this.ballStillTimer > 0.25;
       const finishedPinDeckPass =
         this.ballReachedPinDeck && this.sincePinDeckElapsed > 1.05;
-      const timedOut = elapsedSec > 3.6;
+      const timedOut = elapsedSec > 3.6 || this.shotRealElapsed > 4.2;
 
       if (
         fellOffTable ||
@@ -954,7 +1019,7 @@ export class GameFlowSystem
     }
 
     if (state === 'SETTLING' || inTestSettling) {
-      this.settlingTimer += delta;
+      this.settlingTimer += Math.min(0.25, Math.max(0.0001, delta));
       const evalRes = physics.bowlingWorld.evaluateFallenPins(
         this.arenaOrigin.y - 0.25
       );
@@ -1205,27 +1270,52 @@ export class GameFlowSystem
     this.refreshPanelsVisibility();
   }
 
+  private refundInterruptedShotIfInFlight(): boolean {
+    const inFlight =
+      this.sm.state === 'BALL_IN_MOTION' ||
+      this.sm.state === 'SETTLING' ||
+      (this.sm.state === 'WORKSHOP_TEST' &&
+        (this.workshopTestPhase === 'BALL_IN_MOTION' ||
+          this.workshopTestPhase === 'SETTLING'));
+    if (inFlight && !this.roundResolved && this.shotsUsed > 0) {
+      this.shotsUsed -= 1;
+      this.shotsLeft = Math.min(
+        this.currentLevelConfig.maxShots,
+        this.shotsLeft + 1
+      );
+      this.syncHud();
+      return true;
+    }
+    return false;
+  }
+
   onResetBall(): void {
     this.physicsSystem?.audio.playClick();
     if (
+      this.sm.state === 'ONBOARDING' ||
       this.sm.state === 'BALL_IN_MOTION' ||
       this.sm.state === 'SETTLING' ||
       this.sm.state === 'AIMING' ||
       this.sm.state === 'READY' ||
       this.sm.state === 'WORKSHOP_TEST'
     ) {
+      const refunded = this.refundInterruptedShotIfInFlight();
       this.physicsSystem?.bowlingWorld.resetBallToPedestal(
         new THREE.Vector3(0, BALL_RADIUS, 0)
       );
       this.physicsSystem?.setBallDynamicSync(false);
       this.aimingSystem?.forceResetToPedestal();
-      if (this.sm.state !== 'WORKSHOP_TEST') {
+      if (this.sm.state !== 'WORKSHOP_TEST' && this.sm.state !== 'ONBOARDING') {
         this.sm.transitionGame('READY');
-      } else {
+      } else if (this.sm.state === 'WORKSHOP_TEST') {
         this.workshopTestPhase = 'READY';
       }
       this.uiSystem?.updateHudPower(0, 'IDLE', false);
-      this.uiSystem?.showCallout('BALL RESET TO TEE', '#7dd3fc', 1100);
+      this.uiSystem?.showCallout(
+        refunded ? 'SHOT CANCELLED - READY TO BOWL' : 'BALL RESET TO TEE',
+        '#7dd3fc',
+        1200
+      );
     }
   }
 
@@ -1251,7 +1341,6 @@ export class GameFlowSystem
     );
     this.arenaYaw = Math.atan2(-this._headForward.x, -this._headForward.z);
     this.syncAllTransforms();
-    void this.rebuildCurrentLevel(true);
     this.uiSystem?.showCallout('TABLE RECENTERED', '#38bdf8', 1300);
   }
 
@@ -1265,7 +1354,6 @@ export class GameFlowSystem
     );
     this.saveSettings();
     this.syncAllTransforms();
-    void this.rebuildCurrentLevel(true);
   }
 
   onAdjustDistance(deltaM: number): void {
@@ -1291,7 +1379,6 @@ export class GameFlowSystem
     this.arenaBasePos.set(0, ARENA_TABLE_Y, ARENA_ORIGIN_Z);
     this.arenaYaw = 0;
     this.syncAllTransforms();
-    void this.rebuildCurrentLevel(true);
     this.uiSystem?.showCallout('PLACEMENT RESET', '#38bdf8', 1300);
   }
 
@@ -1333,6 +1420,19 @@ export class GameFlowSystem
     this.uiSystem?.updateSettings(this.settings);
   }
 
+  onToggleLowLagMode(): void {
+    this.physicsSystem?.audio.playClick();
+    this.settings.lowLagMode = !this.settings.lowLagMode;
+    this.saveSettings();
+    this.applyPerformanceSettings();
+    this.uiSystem?.updateSettings(this.settings);
+    this.uiSystem?.showCallout(
+      this.settings.lowLagMode ? 'LOW-LAG MODE: ON' : 'LOW-LAG MODE: OFF',
+      this.settings.lowLagMode ? '#4ade80' : '#38bdf8',
+      1400
+    );
+  }
+
   onAdjustUiScale(delta: number): void {
     this.physicsSystem?.audio.playClick();
     this.settings.uiScale = stepUiScale(this.settings.uiScale, delta);
@@ -1352,8 +1452,61 @@ export class GameFlowSystem
     this.uiSystem?.showCallout('MENU SIZE RESET', '#38bdf8', 1100);
   }
 
+  onEmergencyUnstick(): void {
+    this.physicsSystem?.audio.playClick();
+    this.isLevelLoading = false;
+    this.isSubScreenOpen = false;
+
+    const st = this.sm.state;
+    if (
+      st === 'ONBOARDING' ||
+      st === 'READY' ||
+      st === 'AIMING' ||
+      st === 'BALL_IN_MOTION' ||
+      st === 'SETTLING' ||
+      st === 'WORKSHOP_TEST'
+    ) {
+      this.onResetBall();
+      this.refreshPanelsVisibility();
+      return;
+    }
+
+    if (st === 'PAUSED') {
+      this.onModalResume();
+      this.onResetBall();
+      return;
+    }
+
+    if (st === 'RESULT') {
+      this.onModalPlayAgain();
+      return;
+    }
+
+    this.physicsSystem?.setBallDynamicSync(false);
+    this.aimingSystem?.forceResetToPedestal();
+    this.refreshPanelsVisibility();
+    this.uiSystem?.showCallout('CONTROLS RESET', '#38bdf8', 1200);
+  }
+
+  onEmergencyMainMenu(): void {
+    this.isLevelLoading = false;
+    this.roundResolved = false;
+    this.isSubScreenOpen = false;
+    this.physicsSystem?.setBallDynamicSync(false);
+    this.physicsSystem?.bowlingWorld.resetBallToPedestal(
+      new THREE.Vector3(0, BALL_RADIUS, 0)
+    );
+    this.aimingSystem?.forceResetToPedestal();
+    this.onBackToMenu();
+  }
+
   onPause(): void {
     if (this.roundResolved || this.isLevelLoading) return;
+    // Always refund an interrupted shot before entering PAUSED so Resume never leaves shotsLeft=0
+    this.refundInterruptedShotIfInFlight();
+    if (this.sm.state === 'WORKSHOP_TEST') {
+      this.workshopTestPhase = 'READY';
+    }
     if (!this.sm.pause()) return;
     this.physicsSystem?.audio.playClick();
     this.physicsSystem?.setSimulationActive(false);

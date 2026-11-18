@@ -12,20 +12,20 @@ export type HandSide = 'left' | 'right';
 
 export const PULL_CONSTANTS = {
   /** Thumb-tip to index-tip distance (meters) required to start a pinch grab. */
-  PINCH_ACQUIRE_GAP_M: 0.028,
+  PINCH_ACQUIRE_GAP_M: 0.032,
   /**
    * Wide hysteresis release threshold (meters): once pinched, fingers must
    * visibly open past this gap before release triggers, preventing partial
    * self-occlusion or jitter from dropping the ball mid-pull.
    */
-  PINCH_RELEASE_GAP_M: 0.048,
+  PINCH_RELEASE_GAP_M: 0.05,
   /**
    * Tight pinch threshold below which raw `selectend` events are treated as
    * runtime pinch-occlusion glitches rather than an intentional open-hand release.
    */
-  PINCH_STILL_CLOSED_OVERRIDE_M: 0.032,
+  PINCH_STILL_CLOSED_OVERRIDE_M: 0.034,
   /** Near-hand grab bubble radius (meters) around the tee/ball. */
-  HAND_NEAR_GRAB_RADIUS_M: 0.21,
+  HAND_NEAR_GRAB_RADIUS_M: 0.24,
   /** Debounce window (seconds) hand pinch must stay open before launching. */
   HAND_RELEASE_CONFIRM_SEC: 0.048,
   /**
@@ -33,6 +33,8 @@ export const PULL_CONSTANTS = {
    * during a deep backward pull toward the chest. Never auto-fires on expiry.
    */
   TRACKING_LOSS_HOLD_SEC: 0.24,
+  /** Watchdog timeout (seconds) if held input freezes completely without motion. */
+  STUCK_HOLD_TIMEOUT_SEC: 15.0,
   /** Exponential smoothing rate (1/s) for ball-to-hand attachment. */
   HAND_FOLLOW_DAMP_LAMBDA: 26,
   /** Exponential decay rate (1/s) pulling the grabbed ball smoothly onto the hand anchor. */
@@ -85,6 +87,8 @@ export interface PullStepInput {
   selectActive: boolean;
   /** Active power curve from settings. */
   curve: PowerCurveMode;
+  /** Explicit emergency/button cancel (e.g. controller B/Y or Escape). */
+  cancelRequested?: boolean;
 }
 
 export type PullStepOutcome = 'HOLDING' | 'RELEASE_LAUNCH' | 'CANCELLED';
@@ -128,6 +132,8 @@ export class PullStateMachine {
 
   private releaseConfirmTimer = 0;
   private trackingLostTimer = 0;
+  private frozenHoldTimer = 0;
+  private lastPointerLocal: Vec3Like = {x: 0, y: BALL_RADIUS, z: 0};
   private sawSelectActive = false;
   private lastPowerTier = 0;
 
@@ -143,6 +149,8 @@ export class PullStateMachine {
     this.lastLaunch = computeLaunchParameters(0, 0, 'smooth');
     this.releaseConfirmTimer = 0;
     this.trackingLostTimer = 0;
+    this.frozenHoldTimer = 0;
+    this.lastPointerLocal = {x: 0, y: BALL_RADIUS, z: 0};
     this.sawSelectActive = false;
     this.lastPowerTier = 0;
   }
@@ -158,6 +166,7 @@ export class PullStateMachine {
     this.sourceKind = sourceKind;
     this.handedness = handedness;
     this.anchorLocal = {x: pointerLocal.x, y: pointerLocal.y, z: pointerLocal.z};
+    this.lastPointerLocal = {x: pointerLocal.x, y: pointerLocal.y, z: pointerLocal.z};
     this.grabOffsetLocal = {
       x: ballCurrentLocal.x - pointerLocal.x,
       y: ballCurrentLocal.y - pointerLocal.y,
@@ -173,6 +182,7 @@ export class PullStateMachine {
     this.lastLaunch = computeLaunchParameters(this.clampedPullX, this.clampedPullZ, 'smooth');
     this.releaseConfirmTimer = 0;
     this.trackingLostTimer = 0;
+    this.frozenHoldTimer = 0;
     this.sawSelectActive = selectCurrentlyActive;
     this.lastPowerTier = 0;
   }
@@ -185,6 +195,19 @@ export class PullStateMachine {
         pullX: 0,
         pullZ: 0,
         launch: this.lastLaunch,
+        crossedPowerTier: false,
+      };
+    }
+
+    if (input.cancelRequested) {
+      const launch = this.lastLaunch;
+      this.reset();
+      return {
+        outcome: 'CANCELLED',
+        ballLocal: {x: 0, y: BALL_RADIUS, z: 0},
+        pullX: 0,
+        pullZ: 0,
+        launch,
         crossedPowerTier: false,
       };
     }
@@ -218,6 +241,51 @@ export class PullStateMachine {
     this.trackingLostTimer = 0;
     if (input.selectActive) {
       this.sawSelectActive = true;
+    }
+
+    // Gesture abort: pushing the ball strongly forward down-lane or lifting way up cancels cleanly
+    const forwardPushZ = input.pointerLocal.z - this.anchorLocal.z;
+    const heightAboveTee = input.pointerLocal.y - BALL_RADIUS;
+    if ((forwardPushZ < -0.14 && this.clampedPullZ <= 0.015) || heightAboveTee > 0.36) {
+      const launch = this.lastLaunch;
+      this.reset();
+      return {
+        outcome: 'CANCELLED',
+        ballLocal: {x: 0, y: BALL_RADIUS, z: 0},
+        pullX: 0,
+        pullZ: 0,
+        launch,
+        crossedPowerTier: false,
+      };
+    }
+
+    // Watchdog if a frozen XR runtime fails to dispatch selectend/release
+    const pointerMove = Math.hypot(
+      input.pointerLocal.x - this.lastPointerLocal.x,
+      input.pointerLocal.y - this.lastPointerLocal.y,
+      input.pointerLocal.z - this.lastPointerLocal.z
+    );
+    this.lastPointerLocal = {
+      x: input.pointerLocal.x,
+      y: input.pointerLocal.y,
+      z: input.pointerLocal.z,
+    };
+    if (pointerMove < 0.002) {
+      this.frozenHoldTimer += dt;
+      if (this.frozenHoldTimer >= PULL_CONSTANTS.STUCK_HOLD_TIMEOUT_SEC) {
+        const launch = this.lastLaunch;
+        this.reset();
+        return {
+          outcome: 'CANCELLED',
+          ballLocal: {x: 0, y: BALL_RADIUS, z: 0},
+          pullX: 0,
+          pullZ: 0,
+          launch,
+          crossedPowerTier: false,
+        };
+      }
+    } else {
+      this.frozenHoldTimer = 0;
     }
 
     // Evaluate whether the user is still intentionally holding the ball

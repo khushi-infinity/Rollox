@@ -75,9 +75,12 @@ export interface SpatialUIActionHandler {
   onAdjustVolume: (delta: number) => void;
   onSetPowerCurve: (curve: 'linear' | 'smooth' | 'snappy') => void;
   onToggleTrajectory: () => void;
+  onToggleLowLagMode: () => void;
   onAdjustUiScale: (delta: number) => void;
   onResetUiScale: () => void;
   onPause: () => void;
+  onEmergencyUnstick: () => void;
+  onEmergencyMainMenu: () => void;
   onModalResume: () => void;
   onModalNextLevel: () => void;
   onModalPlayAgain: () => void;
@@ -135,6 +138,17 @@ const INTERACTIVE_PANELS = new Set<PanelKey>([
   'instructions',
   'modal',
   'onboarding',
+]);
+
+// Exclude gameplay 'hud' and 'onboarding' from direct-touch PokeInteractable so hands
+// pinching or pulling near the bowling table can never hit TouchPointer hysteresis.
+const POKE_ENABLED_PANELS = new Set<PanelKey>([
+  'main-menu',
+  'level-select',
+  'workshop',
+  'settings',
+  'instructions',
+  'modal',
 ]);
 
 /**
@@ -199,16 +213,8 @@ export class SpatialUISystem extends createSystem({}) {
         ? entity.getValue(SpatialPanelTag, 'pitchDeg') ?? 0
         : 0;
 
-      if (INTERACTIVE_PANELS.has(key)) {
-        if (!entity.hasComponent(RayInteractable)) {
-          entity.addComponent(RayInteractable);
-        }
-        if (!entity.hasComponent(PokeInteractable)) {
-          entity.addComponent(PokeInteractable);
-        }
-      } else {
-        asset.pointerEvents = 'none';
-      }
+      // Interactive components are attached dynamically only while visible
+      asset.pointerEvents = 'none';
 
       this.panels.set(key, {
         key,
@@ -367,6 +373,9 @@ export class SpatialUISystem extends createSystem({}) {
     );
     this.bindClick('settings', 'set-traj-toggle', () =>
       this.handler?.onToggleTrajectory()
+    );
+    this.bindClick('settings', 'set-lowlag-toggle', () =>
+      this.handler?.onToggleLowLagMode()
     );
     this.bindClick('settings', 'set-scale-down', () =>
       this.handler?.onAdjustUiScale(-UI_SCALE_STEP)
@@ -709,6 +718,16 @@ export class SpatialUISystem extends createSystem({}) {
       'btn-desktop-recenter'
     ) as HTMLButtonElement | null;
 
+    const unstickBtn = document.getElementById(
+      'btn-desktop-unstick'
+    ) as HTMLButtonElement | null;
+    const perfBtn = document.getElementById(
+      'btn-perf-mode'
+    ) as HTMLButtonElement | null;
+    const menuBtn = document.getElementById(
+      'btn-desktop-menu'
+    ) as HTMLButtonElement | null;
+
     if (enterBtn) {
       const onEnterClick = () => {
         void this.handleEnterOrExitXR();
@@ -724,6 +743,30 @@ export class SpatialUISystem extends createSystem({}) {
       recenterBtn.addEventListener('click', onRecenterClick);
       this.cleanupFuncs.push(() =>
         recenterBtn.removeEventListener('click', onRecenterClick)
+      );
+    }
+
+    if (unstickBtn) {
+      const onUnstickClick = () => this.handler?.onEmergencyUnstick();
+      unstickBtn.addEventListener('click', onUnstickClick);
+      this.cleanupFuncs.push(() =>
+        unstickBtn.removeEventListener('click', onUnstickClick)
+      );
+    }
+
+    if (perfBtn) {
+      const onPerfClick = () => this.handler?.onToggleLowLagMode();
+      perfBtn.addEventListener('click', onPerfClick);
+      this.cleanupFuncs.push(() =>
+        perfBtn.removeEventListener('click', onPerfClick)
+      );
+    }
+
+    if (menuBtn) {
+      const onMenuClick = () => this.handler?.onEmergencyMainMenu();
+      menuBtn.addEventListener('click', onMenuClick);
+      this.cleanupFuncs.push(() =>
+        menuBtn.removeEventListener('click', onMenuClick)
       );
     }
 
@@ -779,11 +822,27 @@ export class SpatialUISystem extends createSystem({}) {
     for (const [key, panel] of this.panels.entries()) {
       const visible = visibleSet.has(key);
       panel.asset.visible = visible;
-      if (INTERACTIVE_PANELS.has(key)) {
-        panel.asset.pointerEvents = visible ? 'auto' : 'none';
-      } else {
-        panel.asset.pointerEvents = 'none';
+
+      const allowRay = visible && INTERACTIVE_PANELS.has(key);
+      const allowPoke = visible && POKE_ENABLED_PANELS.has(key);
+
+      if (allowRay) {
+        if (!panel.entity.hasComponent(RayInteractable)) {
+          panel.entity.addComponent(RayInteractable);
+        }
+      } else if (panel.entity.hasComponent(RayInteractable)) {
+        panel.entity.removeComponent(RayInteractable);
       }
+
+      if (allowPoke) {
+        if (!panel.entity.hasComponent(PokeInteractable)) {
+          panel.entity.addComponent(PokeInteractable);
+        }
+      } else if (panel.entity.hasComponent(PokeInteractable)) {
+        panel.entity.removeComponent(PokeInteractable);
+      }
+
+      panel.asset.pointerEvents = allowRay ? 'auto' : 'none';
     }
   }
 
@@ -832,12 +891,12 @@ export class SpatialUISystem extends createSystem({}) {
     const text =
       grabState === 'AIMING'
         ? canLaunch
-          ? `POWER ${pct}% | RELEASE`
-          : 'PULL BACK FURTHER'
+          ? `POWER ${pct}% | RELEASE TO ROLL`
+          : 'PULL BACK | B TO CANCEL'
         : grabState === 'HOVER'
-          ? 'PINCH BALL TO GRAB'
+          ? 'PINCH / TRIGGER TO GRAB'
           : grabState === 'IN_FLIGHT'
-            ? 'BALL IN MOTION'
+            ? 'BALL ROLLING... (RESET IF STUCK)'
             : grabState === 'SETTLING'
               ? 'COUNTING PINS...'
               : 'READY TO BOWL';
@@ -920,12 +979,29 @@ export class SpatialUISystem extends createSystem({}) {
       'set-traj-label',
       settings.showTrajectory ? 'Trajectory: ON' : 'Trajectory: OFF'
     );
+    const lowLag = Boolean(settings.lowLagMode);
+    this.setText(
+      'settings',
+      'set-lowlag-label',
+      lowLag ? 'Low-Lag: ON' : 'Low-Lag: OFF'
+    );
+    this.setProps('settings', 'set-lowlag-toggle', {
+      backgroundColor: lowLag ? '#14532d' : '#1e293b',
+      color: '#f8fafc',
+    });
+    const perfBtn = document.getElementById('btn-perf-mode');
+    if (perfBtn) {
+      perfBtn.textContent = lowLag ? 'Low-Lag: ON' : 'Low-Lag: OFF';
+      perfBtn.setAttribute('data-active', String(lowLag));
+    }
+
     const scalePct = `${Math.round(clampUiScale(settings.uiScale) * 100)}%`;
     this.setText('settings', 'set-scale-val', scalePct);
     for (const mode of ['linear', 'smooth', 'snappy'] as const) {
       this.setProps('settings', `set-curve-${mode}`, {
         backgroundColor:
           settings.powerCurve === mode ? '#0284c7' : '#1e293b',
+        color: '#f8fafc',
       });
     }
   }

@@ -25,7 +25,14 @@ export interface PhysicsPinEntity {
   colliderHandles: number[];
   mesh: THREE.Object3D | null;
   fallen: boolean;
+  localInitialPos: THREE.Vector3;
   initialPos: THREE.Vector3;
+}
+
+interface StaticBodyAnchor {
+  body: RAPIER.RigidBody;
+  localPos: THREE.Vector3;
+  localQuat: THREE.Quaternion;
 }
 
 export interface PhysicsObstacleEntity {
@@ -71,6 +78,7 @@ export class BowlingWorld {
   private eventQueue: RAPIER.EventQueue | null = null;
 
   private staticBodies: RAPIER.RigidBody[] = [];
+  private staticAnchors: StaticBodyAnchor[] = [];
   private groundBody: RAPIER.RigidBody | null = null;
   private groundColliderHandle: number | null = null;
   private ballBody: RAPIER.RigidBody | null = null;
@@ -176,6 +184,67 @@ export class BowlingWorld {
     this.arenaInvQuat.copy(this.arenaQuat).invert();
   }
 
+  /**
+   * Repositions all Rapier bodies synchronously when the user adjusts table
+   * height, distance, or recenters — avoiding expensive Three.js & Rapier rebuilds.
+   */
+  repositionArena(newOffset: THREE.Vector3, newYaw: number): void {
+    const oldOffset = this.arenaOffset.clone();
+    const oldInvQuat = this.arenaInvQuat.clone();
+
+    this.setArenaOffset(newOffset, newYaw);
+    if (!this.world) return;
+
+    // 1. Move fixed lane decks, rails, backstops, and gate frames
+    for (const anchor of this.staticAnchors) {
+      this.localToWorldVec(anchor.localPos.x, anchor.localPos.y, anchor.localPos.z, _tmpVec);
+      _quat.copy(this.arenaQuat).multiply(anchor.localQuat);
+      anchor.body.setTranslation({x: _tmpVec.x, y: _tmpVec.y, z: _tmpVec.z}, false);
+      anchor.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+    }
+
+    // 2. Shift pins cleanly into the new arena frame
+    for (const pin of this.pins) {
+      this.localToWorldVec(
+        pin.localInitialPos.x,
+        pin.localInitialPos.y,
+        pin.localInitialPos.z,
+        pin.initialPos
+      );
+      if (pin.fallen) continue;
+      const t = pin.body.translation();
+      const r = pin.body.rotation();
+      _tmpVec.set(t.x, t.y, t.z).sub(oldOffset).applyQuaternion(oldInvQuat);
+      this.localToWorldVec(_tmpVec.x, _tmpVec.y, _tmpVec.z, _tmpVec);
+      this._localQuat.set(r.x, r.y, r.z, r.w).premultiply(oldInvQuat);
+      _quat.copy(this.arenaQuat).multiply(this._localQuat);
+
+      pin.body.setTranslation({x: _tmpVec.x, y: _tmpVec.y, z: _tmpVec.z}, false);
+      pin.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+    }
+
+    // 3. Re-anchor obstacles
+    for (const obs of this.obstacles) {
+      this.localToWorldVec(obs.spec.x, obs.spec.y, obs.spec.z, obs.baseWorldPos);
+      obs.currentWorldPos.copy(obs.baseWorldPos);
+    }
+
+    // 4. Re-anchor idle/dynamic ball cleanly
+    if (this.ballBody) {
+      const bt = this.ballBody.translation();
+      _tmpVec.set(bt.x, bt.y, bt.z).sub(oldOffset).applyQuaternion(oldInvQuat);
+      this.localToWorldVec(_tmpVec.x, _tmpVec.y, _tmpVec.z, _tmpVec);
+      this.ballBody.setTranslation({x: _tmpVec.x, y: _tmpVec.y, z: _tmpVec.z}, false);
+      if (!this.ballBodyDynamic) {
+        this.ballBody.setNextKinematicTranslation({
+          x: _tmpVec.x,
+          y: _tmpVec.y,
+          z: _tmpVec.z,
+        });
+      }
+    }
+  }
+
   getArenaOffset(): THREE.Vector3 {
     return this.arenaOffset;
   }
@@ -222,8 +291,8 @@ export class BowlingWorld {
       this.localToWorldVec(seg.x, seg.y, seg.z, _tmpVec);
 
       _euler.set(seg.pitchX ?? 0, seg.yawY ?? 0, 0, 'YXZ');
-      _quat.setFromEuler(_euler);
-      _quat.premultiply(this.arenaQuat);
+      const localSegQuat = new THREE.Quaternion().setFromEuler(_euler);
+      _quat.copy(localSegQuat).premultiply(this.arenaQuat);
 
       const segBody = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.fixed()
@@ -236,6 +305,11 @@ export class BowlingWorld {
           })
       );
       this.staticBodies.push(segBody);
+      this.staticAnchors.push({
+        body: segBody,
+        localPos: new THREE.Vector3(seg.x, seg.y, seg.z),
+        localQuat: localSegQuat,
+      });
 
       const deckBevel = 0.004;
       const deckCol = this.world.createCollider(
@@ -275,15 +349,15 @@ export class BowlingWorld {
     const pinDeckYaw = level.pinDeckYaw ?? 0;
     const sinDeck = Math.sin(pinDeckYaw);
     const cosDeck = Math.cos(pinDeckYaw);
-    this.localToWorldVec(
+    const backLocalPos = new THREE.Vector3(
       level.pinDeck.x - sinDeck * 0.32,
       level.pinDeck.y + 0.06,
-      level.pinDeck.z - cosDeck * 0.32,
-      _tmpVec
+      level.pinDeck.z - cosDeck * 0.32
     );
+    this.localToWorldVec(backLocalPos.x, backLocalPos.y, backLocalPos.z, _tmpVec);
     _euler.set(0, pinDeckYaw, 0, 'YXZ');
-    _quat.setFromEuler(_euler);
-    _quat.premultiply(this.arenaQuat);
+    const backLocalQuat = new THREE.Quaternion().setFromEuler(_euler);
+    _quat.copy(backLocalQuat).premultiply(this.arenaQuat);
     const backBody = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.fixed()
         .setTranslation(_tmpVec.x, _tmpVec.y, _tmpVec.z)
@@ -295,6 +369,11 @@ export class BowlingWorld {
         })
     );
     this.staticBodies.push(backBody);
+    this.staticAnchors.push({
+      body: backBody,
+      localPos: backLocalPos,
+      localQuat: backLocalQuat,
+    });
     const backCol = this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(0.28, 0.07, 0.025)
         .setFriction(0.4)
@@ -368,6 +447,7 @@ export class BowlingWorld {
         colliderHandles: [baseCol.handle, bellyCol.handle, neckCol.handle],
         mesh,
         fallen: false,
+        localInitialPos: new THREE.Vector3(p.x, p.y + 0.0595, p.z),
         initialPos: worldPos.clone(),
       });
     }
@@ -437,6 +517,10 @@ export class BowlingWorld {
           currentWorldPos: baseWorldPos.clone(),
         });
       } else if (obs.kind === 'movingGate') {
+        const localGateQuat = new THREE.Quaternion().setFromAxisAngle(
+          _up,
+          obs.yawY ?? 0
+        );
         const obsYaw = this.arenaYaw + (obs.yawY ?? 0);
         _euler.set(0, obsYaw, 0, 'YXZ');
         _quat.setFromEuler(_euler);
@@ -453,6 +537,11 @@ export class BowlingWorld {
             })
         );
         this.staticBodies.push(frameBody);
+        this.staticAnchors.push({
+          body: frameBody,
+          localPos: new THREE.Vector3(obs.x, obs.y, obs.z),
+          localQuat: localGateQuat,
+        });
         for (const side of [-1, 1]) {
           const postCol = this.world.createCollider(
             RAPIER.ColliderDesc.cuboid(0.013, 0.08, 0.013)
@@ -920,6 +1009,7 @@ export class BowlingWorld {
       this.world.removeRigidBody(body);
     }
     this.staticBodies = [];
+    this.staticAnchors = [];
 
     if (this.ballBody) {
       this.world.removeRigidBody(this.ballBody);

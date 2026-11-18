@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   heightOffset: 0,
   distanceOffset: 0,
   uiScale: 1.0,
+  lowLagMode: false,
 };
 
 export const DEFAULT_PROGRESS: CampaignProgress = {

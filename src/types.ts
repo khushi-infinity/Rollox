@@ -156,6 +156,7 @@ export interface GameSettings {
   heightOffset: number;
   distanceOffset: number;
   uiScale: number;
+  lowLagMode?: boolean;
 }
 
 export interface CampaignProgress {

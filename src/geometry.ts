@@ -481,7 +481,6 @@ export function createLaneSegmentMesh(
   const apron = new THREE.Mesh(apronGeo, assets.woodDarkMat);
   apron.position.y = -LANE_DECK_THICKNESS * 0.65;
   apron.receiveShadow = true;
-  apron.castShadow = true;
   group.add(apron);
 
   // Tabletop contact plinth & rubberized feet for ground-level sections
@@ -496,7 +495,6 @@ export function createLaneSegmentMesh(
           -LANE_DECK_THICKNESS * 1.12,
           sz * spec.length
         );
-        pad.castShadow = true;
         group.add(pad);
       }
     }
@@ -517,7 +515,6 @@ export function createLaneSegmentMesh(
     const teeRing = new THREE.Mesh(brassRingGeo, assets.brassMat);
     teeRing.rotation.x = Math.PI / 2;
     teeRing.position.set(0, 0.0045, localOriginZ);
-    teeRing.castShadow = true;
     group.add(teeRing);
   }
 
@@ -640,7 +637,6 @@ export function createPinDeckBackdrop(
 
   const backWall = new THREE.Mesh(backGeo, assets.woodDarkMat);
   backWall.position.set(0, 0.055, -0.08);
-  backWall.castShadow = true;
   backWall.receiveShadow = true;
   group.add(backWall);
 
@@ -658,7 +654,6 @@ export function createPinDeckBackdrop(
   for (const side of [-1, 1]) {
     const pillar = new THREE.Mesh(pillarGeo, assets.stoneMat);
     pillar.position.set(side * 0.23, 0.12, 0);
-    pillar.castShadow = true;
     group.add(pillar);
 
     const cap = new THREE.Mesh(capGeo, assets.brassMat);
@@ -680,7 +675,6 @@ export function createPinDeckBackdrop(
 
   const lintel = new THREE.Mesh(lintelGeo, assets.woodDarkMat);
   lintel.position.set(0, 0.24, 0);
-  lintel.castShadow = true;
   group.add(lintel);
 
   const keystone = new THREE.Mesh(gemGeo, archMat);
@@ -774,12 +768,10 @@ export function createDwarfCharacterMesh(
 
   const leftLeg = new THREE.Mesh(legGeo, bootMat);
   leftLeg.position.set(-0.014, 0.018, 0);
-  leftLeg.castShadow = true;
   root.add(leftLeg);
 
   const rightLeg = new THREE.Mesh(legGeo, bootMat);
   rightLeg.position.set(0.014, 0.018, 0);
-  rightLeg.castShadow = true;
   root.add(rightLeg);
 
   const torso = new THREE.Mesh(torsoGeo, tunicMat);
@@ -793,7 +785,6 @@ export function createDwarfCharacterMesh(
 
   const head = new THREE.Mesh(headGeo, skinMat);
   head.position.y = 0.104;
-  head.castShadow = true;
   root.add(head);
 
   const beard = new THREE.Mesh(beardGeo, beardMat);
@@ -803,7 +794,6 @@ export function createDwarfCharacterMesh(
 
   const helmet = new THREE.Mesh(helmetGeo, ironMat);
   helmet.position.y = 0.107;
-  helmet.castShadow = true;
   root.add(helmet);
 
   for (const side of [-1, 1]) {

@@ -41,11 +41,11 @@
           "color": [1, 0.96, 0.9, 1],
           "intensity": 2.35,
           "castShadow": true,
-          "shadowMapSize": "2048",
-          "shadowCameraSize": 2.8,
+          "shadowMapSize": "1024",
+          "shadowCameraSize": 2.3,
           "shadowCameraNear": 0.5,
           "shadowCameraFar": 11,
-          "shadowRadius": 4,
+          "shadowRadius": 1.5,
           "shadowBias": -0.00035,
           "shadowNormalBias": 0.014
         }
@@ -245,18 +245,18 @@
         "asset": "onboarding-panel"
       },
       "transform": {
-        "position": [0, 1.24, -0.78],
-        "rotationDeg": [-12, 0, 0]
+        "position": [0, 1.38, -1.2],
+        "rotationDeg": [-10, 0, 0]
       },
       "components": {
         "RayInteractable": {},
         "SpatialPanelTag": {
           "panelId": "onboarding",
           "offsetX": 0,
-          "offsetY": 0.3,
-          "offsetZ": -0.3,
+          "offsetY": 0.44,
+          "offsetZ": -0.72,
           "yawDeg": 0,
-          "pitchDeg": -12,
+          "pitchDeg": -10,
           "targetWidthM": 0.52,
           "targetHeightM": 0.24
         }

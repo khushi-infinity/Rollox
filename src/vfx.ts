@@ -52,6 +52,8 @@ export class ParticleBurstPool extends THREE.Group {
   private motes: AmbientMote[] = [];
   private moteOrigin = new THREE.Vector3();
   private moteClock = 0;
+  private moteTickParity = 0;
+  private lowLagMode = false;
 
   constructor() {
     super();
@@ -154,6 +156,11 @@ export class ParticleBurstPool extends THREE.Group {
 
   setArenaOrigin(origin: THREE.Vector3): void {
     this.moteOrigin.copy(origin);
+  }
+
+  setLowLagMode(lowLag: boolean): void {
+    this.lowLagMode = lowLag;
+    this.motesMesh.visible = !lowLag;
   }
 
   emitTrail(pos: THREE.Vector3, dt: number): void {
@@ -316,22 +323,27 @@ export class ParticleBurstPool extends THREE.Group {
       this.trailMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // Subtle floating fantasy motes
-    this.moteClock += dt;
-    for (let i = 0; i < MOTES_COUNT; i++) {
-      const m = this.motes[i];
-      const t = this.moteClock * m.speed + m.phase;
-      _dummy.position.set(
-        this.moteOrigin.x + m.baseX + Math.sin(t) * m.radius,
-        this.moteOrigin.y + m.baseY + Math.cos(t * 1.3) * (m.radius * 0.7),
-        this.moteOrigin.z + m.baseZ + Math.cos(t * 0.8) * m.radius
-      );
-      _dummy.rotation.set(t, t * 0.7, 0);
-      _dummy.scale.setScalar(0.65 + 0.35 * Math.sin(t * 2));
-      _dummy.updateMatrix();
-      this.motesMesh.setMatrixAt(i, _dummy.matrix);
+    // Subtle floating fantasy motes (throttled and skippable in low-lag mode)
+    if (!this.lowLagMode && this.motesMesh.visible) {
+      this.moteClock += dt;
+      this.moteTickParity = (this.moteTickParity + 1) & 1;
+      if (this.moteTickParity === 0) {
+        for (let i = 0; i < MOTES_COUNT; i++) {
+          const m = this.motes[i];
+          const t = this.moteClock * m.speed + m.phase;
+          _dummy.position.set(
+            this.moteOrigin.x + m.baseX + Math.sin(t) * m.radius,
+            this.moteOrigin.y + m.baseY + Math.cos(t * 1.3) * (m.radius * 0.7),
+            this.moteOrigin.z + m.baseZ + Math.cos(t * 0.8) * m.radius
+          );
+          _dummy.rotation.set(t, t * 0.7, 0);
+          _dummy.scale.setScalar(0.65 + 0.35 * Math.sin(t * 2));
+          _dummy.updateMatrix();
+          this.motesMesh.setMatrixAt(i, _dummy.matrix);
+        }
+        this.motesMesh.instanceMatrix.needsUpdate = true;
+      }
     }
-    this.motesMesh.instanceMatrix.needsUpdate = true;
   }
 
   dispose(): void {

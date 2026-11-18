@@ -44,16 +44,21 @@ export interface AimingCallbacks {
     launch: LaunchParameters
   ) => void;
   onShotCancelled: () => void;
+  onEmergencyResetRequested?: () => void;
+  onPauseRequested?: () => void;
 }
 
 interface TrackedInputSample {
   tracked: boolean;
   kind: 'hand-pinch' | 'controller';
   side: HandSide;
+  sourceRef: XRInputSource | null;
   worldPos: THREE.Vector3;
   pinchDistM: number | null;
   selectStart: boolean;
   selectActive: boolean;
+  cancelStart: boolean;
+  menuStart: boolean;
 }
 
 /**
@@ -129,25 +134,48 @@ export class AimingSystem extends createSystem({}) {
       tracked: false,
       kind: 'hand-pinch',
       side: 'left',
+      sourceRef: null,
       worldPos: new THREE.Vector3(),
       pinchDistM: null,
       selectStart: false,
       selectActive: false,
+      cancelStart: false,
+      menuStart: false,
     },
     right: {
       tracked: false,
       kind: 'hand-pinch',
       side: 'right',
+      sourceRef: null,
       worldPos: new THREE.Vector3(),
       pinchDistM: null,
       selectStart: false,
       selectActive: false,
+      cancelStart: false,
+      menuStart: false,
     },
   };
   private _prevControllerPressed: Record<HandSide, boolean> = {
     left: false,
     right: false,
   };
+  private _prevPhysicalPinch: Record<HandSide, boolean> = {
+    left: false,
+    right: false,
+  };
+  private _prevSelectActive: Record<HandSide, boolean> = {
+    left: false,
+    right: false,
+  };
+  private _prevCancelBtn: Record<HandSide, boolean> = {
+    left: false,
+    right: false,
+  };
+  private _prevMenuBtn: Record<HandSide, boolean> = {
+    left: false,
+    right: false,
+  };
+  private activeSourceRef: XRInputSource | null = null;
 
   init(): void {
     this.createGrabHandle();
@@ -249,6 +277,7 @@ export class AimingSystem extends createSystem({}) {
 
   forceResetToPedestal(): void {
     this.pullSM.reset();
+    this.activeSourceRef = null;
     this.mouseDrag.active = false;
     this.mouseDrag.pointerId = -1;
     this.parkHandleAtPedestal();
@@ -530,24 +559,38 @@ export class AimingSystem extends createSystem({}) {
     for (const side of ['left', 'right'] as const) {
       const sample = this._samples[side];
       sample.tracked = false;
+      sample.sourceRef = null;
       sample.pinchDistM = null;
       sample.selectStart = false;
       sample.selectActive = false;
+      sample.cancelStart = false;
+      sample.menuStart = false;
 
-      if (!xrInput) continue;
-      const source = xrInput.getPrimaryInputSource(side);
+      if (!xrInput) {
+        this._prevControllerPressed[side] = false;
+        this._prevCancelBtn[side] = false;
+        this._prevMenuBtn[side] = false;
+        continue;
+      }
+
+      const source = xrInput.getPrimaryInputSource(side) ?? null;
       const selectState = xrInput.getSelectState(side);
+      sample.sourceRef = source;
 
-      // 1. Tracked WebXR Hand (`XRHand` joints + select fallback)
+      // 1. Tracked WebXR Hand (`XRHand` joints; never trust frozen fallback when joints exist)
       if (source?.hand) {
         sample.kind = 'hand-pinch';
-        sample.selectStart = selectState.start;
-        sample.selectActive = selectState.active;
+        this._prevControllerPressed[side] = false;
+        this._prevCancelBtn[side] = false;
+        this._prevMenuBtn[side] = false;
 
         const thumbJoint = source.hand.get('thumb-tip');
         const indexJoint = source.hand.get('index-finger-tip');
+        const hasJointPoseApi = Boolean(
+          frame && refSpace && typeof frame.getJointPose === 'function'
+        );
 
-        if (frame && refSpace && thumbJoint && indexJoint) {
+        if (thumbJoint && indexJoint && hasJointPoseApi && frame && refSpace) {
           const thumbPose = frame.getJointPose?.(thumbJoint, refSpace);
           const indexPose = frame.getJointPose?.(indexJoint, refSpace);
           if (thumbPose && indexPose) {
@@ -564,14 +607,21 @@ export class AimingSystem extends createSystem({}) {
               .add(this._indexWorld)
               .multiplyScalar(0.5);
             sample.pinchDistM = this._thumbWorld.distanceTo(this._indexWorld);
+            sample.selectStart = selectState.start;
+            sample.selectActive = selectState.active;
             sample.tracked = true;
-            continue;
           }
+          // When real hand joints exist and getJointPose returns null, hand tracking
+          // is temporarily occluded/lost — keep tracked = false so PullStateMachine
+          // cleanly enters grace hold / cancels rather than freezing at last position.
+          continue;
         }
 
-        // Fallback to IWSDK indexTipSpace if XRFrame joint pose unavailable (e.g. emulator)
+        // Pure emulator / non-joint hand fallback
+        sample.selectStart = selectState.start;
+        sample.selectActive = selectState.active;
         const tipObj = this.world.playerSpaceEntities?.indexTipSpaces[side]?.object3D;
-        if (tipObj && selectState.active) {
+        if (tipObj && (selectState.active || selectState.start)) {
           tipObj.getWorldPosition(sample.worldPos);
           sample.tracked = true;
         }
@@ -584,20 +634,50 @@ export class AimingSystem extends createSystem({}) {
         const gripObj =
           this.world.playerSpaceEntities?.gripSpaces[side]?.object3D ??
           this.world.playerSpaceEntities?.raySpaces[side]?.object3D;
+        const buttons = source.gamepad?.buttons;
+        const hasButtons = Boolean(buttons && buttons.length > 0);
+        const triggerActive = Boolean(
+          buttons?.[0]?.pressed || (buttons?.[0]?.value ?? 0) > 0.55
+        );
+        const squeezeActive = Boolean(
+          buttons?.[1]?.pressed || (buttons?.[1]?.value ?? 0) > 0.55
+        );
+        // When physical gamepad buttons exist, never let stale selectState.active latch trigger/squeeze
+        const pressed = hasButtons ? triggerActive || squeezeActive : selectState.active;
+
+        const cancelBtn = Boolean(buttons?.[5]?.pressed);
+        const menuBtn = Boolean(buttons?.[3]?.pressed);
+        sample.cancelStart = cancelBtn && !this._prevCancelBtn[side];
+        sample.menuStart = menuBtn && !this._prevMenuBtn[side];
+        this._prevCancelBtn[side] = cancelBtn;
+        this._prevMenuBtn[side] = menuBtn;
+
         if (gripObj) {
           gripObj.getWorldPosition(sample.worldPos);
-          const buttons = source.gamepad?.buttons;
-          const triggerPressed = Boolean(buttons?.[0]?.pressed);
-          const squeezePressed = Boolean(buttons?.[1]?.pressed);
-          const pressed = triggerPressed || squeezePressed || selectState.active;
           sample.selectStart = pressed && !this._prevControllerPressed[side];
           sample.selectActive = pressed;
           this._prevControllerPressed[side] = pressed;
           sample.tracked = true;
+        } else {
+          this._prevControllerPressed[side] = false;
         }
       } else {
         this._prevControllerPressed[side] = false;
+        this._prevCancelBtn[side] = false;
+        this._prevMenuBtn[side] = false;
       }
+    }
+  }
+
+  private commitPrevEdges(): void {
+    for (const side of ['left', 'right'] as const) {
+      const s = this._samples[side];
+      this._prevPhysicalPinch[side] =
+        s.tracked &&
+        s.kind === 'hand-pinch' &&
+        s.pinchDistM !== null &&
+        s.pinchDistM <= PULL_CONSTANTS.PINCH_ACQUIRE_GAP_M;
+      this._prevSelectActive[side] = s.tracked && s.selectActive;
     }
   }
 
@@ -610,15 +690,19 @@ export class AimingSystem extends createSystem({}) {
 
       const distToBall = sample.worldPos.distanceTo(this.pedestalWorld);
       const nearBall = distToBall <= PULL_CONSTANTS.HAND_NEAR_GRAB_RADIUS_M;
+      const selectEdge =
+        sample.selectStart || (sample.selectActive && !this._prevSelectActive[side]);
 
       if (sample.kind === 'hand-pinch') {
-        const physicalPinch =
+        const physicalPinchNow =
           sample.pinchDistM !== null &&
           sample.pinchDistM <= PULL_CONSTANTS.PINCH_ACQUIRE_GAP_M;
-        const nearAcquire = nearBall && (physicalPinch || sample.selectStart || sample.selectActive);
-        const rayAcquire = rayHovered && sample.selectStart;
+        const physicalPinchEdge = physicalPinchNow && !this._prevPhysicalPinch[side];
+        const nearAcquire = nearBall && (physicalPinchNow || selectEdge);
+        const rayAcquire = rayHovered && (selectEdge || physicalPinchEdge);
 
         if (nearAcquire || rayAcquire) {
+          this.activeSourceRef = sample.sourceRef;
           this.worldToArenaLocal(sample.worldPos, this._localPos);
           this.worldToArenaLocal(this.lastBallWorldPos, this._ballLocal);
           this.pullSM.beginGrab(
@@ -634,9 +718,10 @@ export class AimingSystem extends createSystem({}) {
           return;
         }
       } else {
-        const nearAcquire = nearBall && sample.selectStart;
-        const rayAcquire = rayHovered && sample.selectStart;
+        const nearAcquire = nearBall && selectEdge;
+        const rayAcquire = rayHovered && selectEdge;
         if (nearAcquire || rayAcquire) {
+          this.activeSourceRef = sample.sourceRef;
           this.worldToArenaLocal(sample.worldPos, this._localPos);
           this.worldToArenaLocal(this.lastBallWorldPos, this._ballLocal);
           this.pullSM.beginGrab(
@@ -661,6 +746,18 @@ export class AimingSystem extends createSystem({}) {
       return;
     }
 
+    this.sampleXRInputs();
+
+    // Global controller escape & pause buttons work even during stuck motion/aiming
+    if (this._samples.left.menuStart || this._samples.right.menuStart) {
+      this.callbacks.onPauseRequested?.();
+      this.commitPrevEdges();
+      return;
+    }
+
+    const anyCancelEdge =
+      this._samples.left.cancelStart || this._samples.right.cancelStart;
+
     const canAim = this.callbacks.isAimingAllowed();
 
     if (this.rayHandleEntity.object3D) {
@@ -668,17 +765,20 @@ export class AimingSystem extends createSystem({}) {
     }
 
     if (!canAim) {
+      if (anyCancelEdge) {
+        this.callbacks.onEmergencyResetRequested?.();
+      }
       if (this.pullSM.active || this.mouseDrag.active) {
         this.forceResetToPedestal();
       } else {
         this.hoverHaloMat.opacity = 0;
         this.hideAimGuides();
       }
+      this.commitPrevEdges();
       return;
     }
 
     const dt = Math.max(0.001, Math.min(0.08, delta));
-    this.sampleXRInputs();
 
     // Try acquiring a new XR grab if idle
     if (!this.pullSM.active) {
@@ -694,6 +794,7 @@ export class AimingSystem extends createSystem({}) {
       let tracked = false;
       let pinchDistM: number | null = null;
       let selectActive = false;
+      let cancelRequested = anyCancelEdge;
 
       if (this.pullSM.sourceKind === 'mouse') {
         const dom = this.renderer.domElement;
@@ -712,6 +813,15 @@ export class AimingSystem extends createSystem({}) {
         selectActive = this.mouseDrag.active;
       } else if (this.pullSM.handedness) {
         const sample = this._samples[this.pullSM.handedness];
+        const sourceSwitched =
+          sample.tracked &&
+          (sample.kind !== this.pullSM.sourceKind ||
+            (this.activeSourceRef !== null &&
+              sample.sourceRef !== null &&
+              sample.sourceRef !== this.activeSourceRef));
+        if (sourceSwitched) {
+          cancelRequested = true;
+        }
         tracked = sample.tracked;
         pinchDistM = sample.pinchDistM;
         selectActive = sample.selectActive;
@@ -727,6 +837,7 @@ export class AimingSystem extends createSystem({}) {
         pinchDistM,
         selectActive,
         curve: settings.powerCurve,
+        cancelRequested,
       });
 
       if (stepRes.outcome === 'HOLDING') {
@@ -763,6 +874,7 @@ export class AimingSystem extends createSystem({}) {
           settings.showTrajectory
         );
         this.callbacks.onAimUpdated(stepRes.launch, stepRes.pullX, stepRes.pullZ);
+        this.commitPrevEdges();
         return;
       }
 
@@ -794,6 +906,7 @@ export class AimingSystem extends createSystem({}) {
         const releaseSpin = this._worldSpin.clone();
         const releaseLaunch = stepRes.launch;
 
+        this.activeSourceRef = null;
         this.mouseDrag.active = false;
         this.parkHandleAtPedestal();
         this.setGrabState('IN_FLIGHT');
@@ -803,15 +916,18 @@ export class AimingSystem extends createSystem({}) {
           releaseSpin,
           releaseLaunch
         );
+        this.commitPrevEdges();
         return;
       }
 
-      // Cancelled safely back to tee (too light tap or prolonged lost tracking)
+      // Cancelled safely back to tee (too light tap, gesture abort, device switch, or lost tracking)
+      this.activeSourceRef = null;
       this.mouseDrag.active = false;
       physicsSystem?.bowlingWorld.resetBallToPedestal(this.pedestalLocal);
       this.parkHandleAtPedestal();
       this.setGrabState('IDLE');
       this.callbacks.onShotCancelled();
+      this.commitPrevEdges();
       return;
     }
 
@@ -838,6 +954,7 @@ export class AimingSystem extends createSystem({}) {
       this.hoverHaloMat.opacity = 0.34 + Math.sin(time * 2.8) * 0.1;
       this.hoverHaloMesh.scale.setScalar(1.0);
     }
+    this.commitPrevEdges();
   }
 
   private updateAimVisuals(

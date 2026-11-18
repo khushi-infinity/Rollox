@@ -42,9 +42,7 @@
     },
     "features": {
       "locomotion": false,
-      "grabbing": {
-        "useHandPinchForGrab": true
-      },
+      "grabbing": false,
       "physics": false,
       "sceneUnderstanding": true,
       "environmentRaycast": false,

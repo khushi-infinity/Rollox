@@ -27,9 +27,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  max-width: min(94vw, 760px);
-  padding: 12px 18px;
+  gap: 14px;
+  max-width: min(96vw, 900px);
+  padding: 10px 16px;
   border-radius: 16px;
   background: rgba(15, 23, 42, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.28);
@@ -143,11 +143,19 @@ body {
   transform: translateY(-1px);
 }
 
+.dock-secondary,
 #btn-desktop-recenter {
-  background: rgba(30, 41, 59, 0.9);
+  background: rgba(30, 41, 59, 0.92);
   color: #e2e8f0;
 }
 
+.dock-secondary:hover,
 #btn-desktop-recenter:hover {
-  background: rgba(51, 65, 85, 0.95);
+  background: rgba(51, 65, 85, 0.96);
+}
+
+#btn-perf-mode[data-active='true'] {
+  background: rgba(20, 83, 45, 0.9);
+  color: #bbf7d0;
+  border-color: rgba(74, 222, 128, 0.65);
 }
