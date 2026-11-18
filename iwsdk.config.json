@@ -18,10 +18,10 @@
       },
       "features": {
         "handTracking": true,
-        "anchors": true,
+        "anchors": false,
         "planeDetection": true,
-        "meshDetection": true,
-        "hitTest": true,
+        "meshDetection": false,
+        "hitTest": false,
         "depthSensing": {
           "usage": "gpu-optimized",
           "format": "float32"
@@ -47,7 +47,7 @@
       },
       "physics": false,
       "sceneUnderstanding": true,
-      "environmentRaycast": true,
+      "environmentRaycast": false,
       "spatialUI": {
         "kit": "horizon",
         "preferredColorScheme": "dark"

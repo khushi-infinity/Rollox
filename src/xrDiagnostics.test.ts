@@ -70,10 +70,7 @@ function makeMockWorld(): XRLaunchWorldLike {
     xrDefaults: {
       features: {
         handTracking: true,
-        anchors: true,
         planeDetection: true,
-        meshDetection: true,
-        hitTest: true,
         depthSensing: {usage: 'gpu-optimized', format: 'float32'},
       },
       restoreCameraOnExit: true,

@@ -387,6 +387,10 @@ export function createProceduralAssets(
     restoreOpaqueMaterials: () => {
       for (const m of sharedOpaqueMaterials) {
         m.transparent = false;
+        delete (m as unknown as {onBeforeCompile?: unknown}).onBeforeCompile;
+        if (m.userData && 'shader' in m.userData) {
+          delete m.userData.shader;
+        }
         m.needsUpdate = true;
       }
     },

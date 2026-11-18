@@ -81,6 +81,7 @@ export interface SpatialUIActionHandler {
   onModalResume: () => void;
   onModalNextLevel: () => void;
   onModalPlayAgain: () => void;
+  onModalLevelSelect: () => void;
   onModalEditSetup: () => void;
   onModalMainMenu: () => void;
   // Custom Game / Workshop actions
@@ -415,6 +416,9 @@ export class SpatialUISystem extends createSystem({}) {
     );
     this.bindClick('modal', 'modal-play-again-btn', () =>
       this.handler?.onModalPlayAgain()
+    );
+    this.bindClick('modal', 'modal-levels-btn', () =>
+      this.handler?.onModalLevelSelect()
     );
     this.bindClick('modal', 'modal-edit-setup-btn', () =>
       this.handler?.onModalEditSetup()
@@ -1043,6 +1047,7 @@ export class SpatialUISystem extends createSystem({}) {
   ): void {
     if (mode === 'PAUSE') {
       this.setText('modal', 'modal-eyebrow', 'GAME PAUSED');
+      this.setProps('modal', 'modal-eyebrow', {color: '#38bdf8'});
       this.setText(
         'modal',
         'modal-level-name',
@@ -1057,6 +1062,7 @@ export class SpatialUISystem extends createSystem({}) {
         'modal-title',
         summary ? summary.levelName : 'Take a Breather'
       );
+      this.setProps('modal', 'modal-title', {color: '#fde047'});
       this.setText('modal', 'modal-stars', 'SEATED MIXED-REALITY BOWLING');
       this.setProps('modal', 'modal-banner-box', {display: 'none'});
       this.setText(
@@ -1081,26 +1087,43 @@ export class SpatialUISystem extends createSystem({}) {
         summary ? `${summary.shotsUsed} / ${summary.maxShots}` : '0 / 3'
       );
 
-      this.setProps('modal', 'modal-resume-btn', {display: 'flex'});
+      this.setProps('modal', 'modal-resume-btn', {
+        display: 'flex',
+        backgroundColor: '#0284c7',
+        color: '#ffffff',
+      });
       this.setProps('modal', 'modal-next-btn', {display: 'none'});
       this.setProps('modal', 'modal-play-again-btn', {
         display: 'flex',
-        backgroundColor: '#1e293b',
+        backgroundColor: '#334155',
+        color: '#f8fafc',
       });
       this.setText(
         'modal',
         'modal-play-again-label',
         summary?.isCustomWorkshop ? 'Restart Custom Game' : 'Restart Level'
       );
+      this.setProps('modal', 'modal-levels-btn', {
+        display: summary?.isCustomWorkshop ? 'none' : 'flex',
+        backgroundColor: '#334155',
+        color: '#f8fafc',
+      });
+      this.setText('modal', 'modal-levels-label', 'Other Levels');
       this.setProps('modal', 'modal-edit-setup-btn', {
         display: summary?.isCustomWorkshop ? 'flex' : 'none',
-        backgroundColor: '#1e293b',
+        backgroundColor: '#334155',
+        color: '#f8fafc',
       });
       this.setText('modal', 'modal-edit-setup-label', 'Edit Setup');
-      this.setProps('modal', 'modal-settings-btn', {display: 'flex'});
+      this.setProps('modal', 'modal-settings-btn', {
+        display: 'flex',
+        backgroundColor: '#334155',
+        color: '#f8fafc',
+      });
       this.setProps('modal', 'modal-main-menu-btn', {
         display: 'flex',
-        backgroundColor: '#1e293b',
+        backgroundColor: '#334155',
+        color: '#f8fafc',
       });
       this.setText('modal', 'modal-main-menu-label', 'Main Menu');
       return;
@@ -1117,9 +1140,33 @@ export class SpatialUISystem extends createSystem({}) {
       unlockedLevelIndex,
     });
 
+    const eyebrowColor =
+      pres.bannerTone === 'warning'
+        ? '#fbbf24'
+        : pres.bannerTone === 'gold'
+          ? '#fde047'
+          : '#38bdf8';
+    const titleColor = pres.bannerTone === 'warning' ? '#fbbf24' : '#fde047';
+    const bannerBg =
+      pres.bannerTone === 'warning'
+        ? '#451a03'
+        : pres.bannerTone === 'gold'
+          ? '#1e3a8a'
+          : '#14532d';
+    const bannerBorder =
+      pres.bannerTone === 'warning'
+        ? '#f59e0b'
+        : pres.bannerTone === 'gold'
+          ? '#fde047'
+          : '#4ade80';
+    const bannerTextColor =
+      pres.bannerTone === 'warning' ? '#fef3c7' : '#ecfdf5';
+
     this.setText('modal', 'modal-eyebrow', pres.eyebrow);
+    this.setProps('modal', 'modal-eyebrow', {color: eyebrowColor});
     this.setText('modal', 'modal-level-name', pres.levelLabel);
     this.setText('modal', 'modal-title', pres.title);
+    this.setProps('modal', 'modal-title', {color: titleColor});
     this.setText(
       'modal',
       'modal-stars',
@@ -1127,10 +1174,11 @@ export class SpatialUISystem extends createSystem({}) {
     );
     this.setProps('modal', 'modal-banner-box', {
       display: pres.showBanner ? 'flex' : 'none',
-      backgroundColor: pres.isCampaignComplete ? '#1e3a8a' : '#14532d',
-      borderColor: pres.isCampaignComplete ? '#fde047' : '#4ade80',
+      backgroundColor: bannerBg,
+      borderColor: bannerBorder,
     });
     this.setText('modal', 'modal-banner-text', pres.bannerText);
+    this.setProps('modal', 'modal-banner-text', {color: bannerTextColor});
     this.setText(
       'modal',
       'modal-summary',
@@ -1163,24 +1211,35 @@ export class SpatialUISystem extends createSystem({}) {
     this.setProps('modal', 'modal-next-btn', {
       display: pres.showNextLevel ? 'flex' : 'none',
       backgroundColor: '#0284c7',
+      color: '#ffffff',
     });
     this.setText('modal', 'modal-next-label', pres.nextLevelLabel);
 
     this.setProps('modal', 'modal-play-again-btn', {
       display: pres.showPlayAgain ? 'flex' : 'none',
-      backgroundColor: pres.showNextLevel ? '#1e293b' : '#0284c7',
+      backgroundColor: pres.showNextLevel ? '#334155' : '#0284c7',
+      color: '#ffffff',
     });
     this.setText('modal', 'modal-play-again-label', pres.playAgainLabel);
 
+    this.setProps('modal', 'modal-levels-btn', {
+      display: pres.showOtherLevels ? 'flex' : 'none',
+      backgroundColor: '#334155',
+      color: '#f8fafc',
+    });
+    this.setText('modal', 'modal-levels-label', pres.otherLevelsLabel);
+
     this.setProps('modal', 'modal-edit-setup-btn', {
       display: pres.showEditSetup ? 'flex' : 'none',
-      backgroundColor: '#1e293b',
+      backgroundColor: '#334155',
+      color: '#f8fafc',
     });
     this.setText('modal', 'modal-edit-setup-label', pres.editSetupLabel);
 
     this.setProps('modal', 'modal-main-menu-btn', {
       display: pres.showMainMenu ? 'flex' : 'none',
-      backgroundColor: '#1e293b',
+      backgroundColor: '#334155',
+      color: '#f8fafc',
     });
     this.setText('modal', 'modal-main-menu-label', pres.mainMenuLabel);
   }

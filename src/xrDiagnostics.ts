@@ -72,9 +72,6 @@ export interface XRLaunchWorldLike {
 export const ROLLOX_REQUESTED_FEATURES = [
   'hand-tracking',
   'plane-detection',
-  'anchors',
-  'hit-test',
-  'mesh-detection',
   'depth-sensing',
 ] as const;
 

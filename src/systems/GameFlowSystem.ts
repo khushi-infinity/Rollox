@@ -145,6 +145,8 @@ export class GameFlowSystem
   private onboardingStep: 'pinch' | 'pull' | 'aim' | 'release' = 'pinch';
   private shotSimElapsed = 0;
   private ballStillTimer = 0;
+  private ballReachedPinDeck = false;
+  private sincePinDeckElapsed = 0;
   private settlingTimer = 0;
   private _ballPos = new THREE.Vector3();
   private _localBallPos = new THREE.Vector3();
@@ -154,7 +156,7 @@ export class GameFlowSystem
   private _yAxis = new THREE.Vector3(0, 1, 0);
 
   private levelBuildGen = 0;
-  private groundSyncTimer = 0;
+  private groundMeshRegistered = false;
   private roundResolved = false;
   private isLevelLoading = false;
 
@@ -308,8 +310,9 @@ export class GameFlowSystem
     const physics = this.physicsSystem;
     if (physics) {
       await physics.ensureReady();
-      if (this.groundMesh) {
+      if (this.groundMesh && !this.groundMeshRegistered) {
         physics.bowlingWorld.setGroundPlaneCollisionMesh(this.groundMesh);
+        this.groundMeshRegistered = true;
       }
     }
 
@@ -416,12 +419,11 @@ export class GameFlowSystem
     for (const ent of targets) {
       if (!ent) continue;
       if (this.isDepthOcclusionActive) {
-        if (ent.hasComponent(DepthOccludable)) {
-          ent.removeComponent(DepthOccludable);
+        if (!ent.hasComponent(DepthOccludable)) {
+          ent.addComponent(DepthOccludable, {
+            mode: OcclusionShadersMode.MinMaxSoftOcclusion,
+          });
         }
-        ent.addComponent(DepthOccludable, {
-          mode: OcclusionShadersMode.MinMaxSoftOcclusion,
-        });
       } else if (ent.hasComponent(DepthOccludable)) {
         ent.removeComponent(DepthOccludable);
       }
@@ -734,15 +736,16 @@ export class GameFlowSystem
     // 5. Physics setup
     if (physics) {
       physics.setBallDynamicSync(false);
-      physics.setSimulationActive(true);
+      physics.setSimulationActive(this.isPhysicsSimulationStateActive());
       physics.bowlingWorld.buildLevelPhysics(
         cfg,
         this.ballEntity?.object3D ?? null,
         pinMeshes,
         obstacleVisuals
       );
-      if (this.groundMesh) {
+      if (!this.groundMeshRegistered && this.groundMesh) {
         physics.bowlingWorld.setGroundPlaneCollisionMesh(this.groundMesh);
+        this.groundMeshRegistered = true;
       }
     }
 
@@ -757,10 +760,6 @@ export class GameFlowSystem
     }
 
     this.aimingSystem?.forceResetToPedestal();
-
-    if (this.isDepthOcclusionActive) {
-      this.syncDepthOccludables();
-    }
 
     if (!preserveRoundState) {
       this.resetRoundStats(cfg);
@@ -781,41 +780,56 @@ export class GameFlowSystem
     });
   }
 
+  private isPhysicsSimulationStateActive(): boolean {
+    const s = this.sm.state;
+    return (
+      s === 'ONBOARDING' ||
+      s === 'READY' ||
+      s === 'AIMING' ||
+      s === 'BALL_IN_MOTION' ||
+      s === 'SETTLING' ||
+      s === 'WORKSHOP' ||
+      s === 'WORKSHOP_TEST'
+    );
+  }
+
   private refreshPanelsVisibility(): void {
     const ui = this.uiSystem;
-    if (!ui) return;
+    if (ui) {
+      const visible = new Set<PanelKey>();
+      switch (this.sm.state) {
+        case 'MAIN_MENU':
+          visible.add('main-menu');
+          break;
+        case 'LEVEL_SELECT':
+          visible.add('level-select');
+          break;
+        case 'WORKSHOP':
+          visible.add('workshop');
+          break;
+        case 'ONBOARDING':
+          visible.add('hud');
+          visible.add('onboarding');
+          break;
+        case 'READY':
+        case 'AIMING':
+        case 'BALL_IN_MOTION':
+        case 'SETTLING':
+        case 'WORKSHOP_TEST':
+          visible.add('hud');
+          break;
+        case 'PAUSED':
+        case 'RESULT':
+          visible.add('modal');
+          break;
+        default:
+          break;
+      }
 
-    const visible = new Set<PanelKey>();
-    switch (this.sm.state) {
-      case 'MAIN_MENU':
-        visible.add('main-menu');
-        break;
-      case 'LEVEL_SELECT':
-        visible.add('level-select');
-        break;
-      case 'WORKSHOP':
-        visible.add('workshop');
-        break;
-      case 'ONBOARDING':
-        visible.add('hud');
-        visible.add('onboarding');
-        break;
-      case 'READY':
-      case 'AIMING':
-      case 'BALL_IN_MOTION':
-      case 'SETTLING':
-      case 'WORKSHOP_TEST':
-        visible.add('hud');
-        break;
-      case 'PAUSED':
-      case 'RESULT':
-        visible.add('modal');
-        break;
-      default:
-        break;
+      ui.setVisiblePanels(visible);
     }
 
-    ui.setVisiblePanels(visible);
+    this.physicsSystem?.setSimulationActive(this.isPhysicsSimulationStateActive());
   }
 
   private launchShot(
@@ -856,6 +870,8 @@ export class GameFlowSystem
     this.shotsLeft = Math.max(0, this.shotsLeft - 1);
     this.shotSimElapsed = 0;
     this.ballStillTimer = 0;
+    this.ballReachedPinDeck = false;
+    this.sincePinDeckElapsed = 0;
 
     if (wasOnboarding) {
       this.progress.onboardingCompleted = true;
@@ -875,11 +891,6 @@ export class GameFlowSystem
     const physics = this.physicsSystem;
     if (!physics || this.roundResolved || this.isLevelLoading) return;
 
-    this.groundSyncTimer += delta;
-    if (this.groundSyncTimer > 4 && this.groundMesh) {
-      this.groundSyncTimer = 0;
-    }
-
     const inTestFlight =
       state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'BALL_IN_MOTION';
     const inTestSettling =
@@ -898,7 +909,19 @@ export class GameFlowSystem
           this._quat.setFromAxisAngle(this._yAxis, -this.arenaYaw)
         );
 
-      if (speed < 0.09) {
+      const deck = this.currentLevelConfig.pinDeck;
+      const distToDeck = Math.hypot(
+        this._localBallPos.x - deck.x,
+        this._localBallPos.z - deck.z
+      );
+      if (distToDeck <= 0.34) {
+        this.ballReachedPinDeck = true;
+      }
+      if (this.ballReachedPinDeck) {
+        this.sincePinDeckElapsed += simDt;
+      }
+
+      if (speed < 0.14) {
         this.ballStillTimer += simDt;
       } else {
         this.ballStillTimer = 0;
@@ -907,9 +930,17 @@ export class GameFlowSystem
       const fellOffTable = y < this.arenaOrigin.y - 0.36;
       const pastBackstop = this._localBallPos.z < -2.35;
       const stoppedOnLane = elapsedSec > 0.35 && this.ballStillTimer > 0.25;
-      const timedOut = elapsedSec > 4.2;
+      const finishedPinDeckPass =
+        this.ballReachedPinDeck && this.sincePinDeckElapsed > 1.05;
+      const timedOut = elapsedSec > 3.6;
 
-      if (fellOffTable || pastBackstop || stoppedOnLane || timedOut) {
+      if (
+        fellOffTable ||
+        pastBackstop ||
+        stoppedOnLane ||
+        finishedPinDeckPass ||
+        timedOut
+      ) {
         this.settlingTimer = 0;
         if (state === 'BALL_IN_MOTION') {
           this.sm.transitionGame('SETTLING');
@@ -1088,6 +1119,7 @@ export class GameFlowSystem
   onOpenLevelSelect(): void {
     this.physicsSystem?.audio.playClick();
     this.isSubScreenOpen = false;
+    this.subScreenReturnState = 'MAIN_MENU';
     this.uiSystem?.updateLevelSelect(this.progress);
     this.sm.transitionGame('LEVEL_SELECT');
     this.refreshPanelsVisibility();
@@ -1325,6 +1357,10 @@ export class GameFlowSystem
     if (!this.sm.pause()) return;
     this.physicsSystem?.audio.playClick();
     this.physicsSystem?.setSimulationActive(false);
+    this.physicsSystem?.setBallDynamicSync(false);
+    this.physicsSystem?.bowlingWorld.resetBallToPedestal(
+      new THREE.Vector3(0, BALL_RADIUS, 0)
+    );
     this.aimingSystem?.forceResetToPedestal();
     const summarySnapshot: ScoreSummary = {
       levelId: this.currentLevelConfig.id,
@@ -1352,7 +1388,6 @@ export class GameFlowSystem
     if (this.sm.state !== 'PAUSED') return;
     this.physicsSystem?.audio.playClick();
     if (!this.sm.resume()) return;
-    this.physicsSystem?.setSimulationActive(true);
     this.refreshPanelsVisibility();
   }
 
@@ -1382,6 +1417,15 @@ export class GameFlowSystem
     } else {
       void this.loadCampaignLevel(this.currentLevelIndex, true);
     }
+  }
+
+  onModalLevelSelect(): void {
+    if (this.isLevelLoading) return;
+    if (this.sm.state !== 'RESULT' && this.sm.state !== 'PAUSED') return;
+    this.roundResolved = false;
+    this.physicsSystem?.setBallDynamicSync(false);
+    this.aimingSystem?.forceResetToPedestal();
+    this.onOpenLevelSelect();
   }
 
   onModalEditSetup(): void {

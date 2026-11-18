@@ -13,29 +13,33 @@ Build **Rollox**, a hands-first miniature mixed-reality bowling game for Meta Qu
 ## 3. Current Working Features
 - **WebXR Runtime Diagnostics & Session Launch Resilience (`/src/xrDiagnostics.ts`)**:
   - Real feature detection via `navigator.xr` and `navigator.xr.isSessionSupported('immersive-ar')` (no user-agent sniffing).
-  - Keeps requested capabilities (`hand-tracking`, `plane-detection`, `anchors`, `hit-test`, `mesh-detection`, `depth-sensing`) strictly optional so missing runtime capabilities never block session creation.
+  - Requests only active WebXR capabilities (`hand-tracking`, `plane-detection`, `depth-sensing`) as optional features while disabling unused `meshDetection`, `anchors`, `hitTest`, and `environmentRaycast` in `/iwsdk.config.json` to prevent Quest room-mesh rebuild churn and failed anchor retry loops.
   - Loading state, duplicate launch prevention, explicit `try/catch` error surfacing in both the 2D XR entry dock and Main Menu, reference-space resolution, camera restore on exit, and granted-vs-skipped feature reporting.
+- **Spatial Anchoring Stability & Frame Pacing (`/src/systems/GameFlowSystem.ts`, `/src/systems/RolloxPhysicsSystem.ts`, `/src/geometry.ts`)**:
+  - Locks `RolloxWorldRoot` (`RolloxTableRoot`, `RolloxArenaRoot`, `RolloxDynamicEntities`, `RolloxAimingGuides`, bowling ball, ray reticle, and all 9 spatial UIKitML panels) in world space (never camera-parented) with a strict one-time `XRPlane` initial placement guard (`hasAutoSnappedPlane || hasUserPlaced || hasPlayedAnyShotThisSession`).
+  - Pauses Rapier3D physics stepping during `MAIN_MENU`, `LEVEL_SELECT`, `PAUSED`, and `RESULT`, registers the ground trimesh collider once, avoids recursive `DepthOccludable` `onBeforeCompile` shader wrapping via `restoreOpaqueMaterials()`, and resolves ball runs cleanly once past the pin deck (`ballReachedPinDeck`).
 - **Interaction-Stable Spatial UI (`/src/menuInteraction.ts`, `/src/systems/SpatialUISystem.ts`)**:
-  - Decouples spatial UI panel vertical anchoring (`detectedSurfaceY ?? ARENA_TABLE_Y`) from table `heightOffset` (`Higher` / `Lower`) so adjusting table height moves only the 3D bowling arena — preventing panel drift or runaway re-triggers under stationary hands/rays.
+  - Decouples spatial UI panel vertical anchoring (`detectedSurfaceY ?? ARENA_TABLE_Y`) from table `heightOffset` (`Higher` / `Lower`) so adjusting table height moves only the 3D bowling arena.
   - Per-button single-click cooldown (`220ms`) and cross-screen transition lock (`240ms`) prevent XR poke/ray bounce and accidental bleed-through clicks.
   - Fallen pins remain hidden across mid-round height/distance/recenter adjustments.
-- **Streamlined Menu, Campaign Flow, Results & Custom Game**:
+- **Streamlined Menu, Campaign, Incomplete-Level, Pause & Custom Game Flows**:
   - **Main Menu**: Clean primary navigation (`PLAY`, `CUSTOM GAME`, `SETTINGS`, `ENTER/EXIT MIXED REALITY`).
   - **Campaign Level Selection**: Displays all 5 levels clearly marking `COMPLETED`, `CURRENT`, `UNLOCKED`, and `LOCKED` states, enforcing level locks while launching unlocked levels immediately.
-  - **Post-Game Results Screen**: Shows Final Score, Best Score / Shots Used, Pins Knocked Down, Stars Earned, and clean actions (`Next Level` / `Play Again` / `Main Menu`, with a `CAMPAIGN COMPLETE!` banner replacing `Next Level` on Level 5).
-  - **Custom Game Setup (Alley Workshop)**: Configure modular lanes (8 module types), Obstacles (`dwarf`, `bumper`, `movingGate`, `slidingBarrier`), Pin Arrangements (`standard10`, `diamond9`, `split8`, `crown6`), Gameplay Settings (Attempts `2–6`, Obstacle Speed `Relaxed`/`Normal`/`Fast`, Side Rails ON/OFF), live validation, `Play Again` / `Edit Custom Game` / `Main Menu` results flow.
+  - **Pause Modal**: Displays `Resume Game`, `Restart Level` / `Restart Custom Game`, `Other Levels` (campaign) or `Edit Setup` (custom), `Settings & Menu Size`, and `Main Menu`.
+  - **Post-Game Results & Incomplete-Level Modal**: Displays Final Score, Best Score / Shots Used, Pins Knocked Down, and Stars Earned. When a campaign level is **not completed** (`stars === 0`), displays an amber `'LEVEL NOT COMPLETED'` modal (`'NO PINS KNOCKED'` or `'ALMOST THERE!'`) with **`Try Again`**, **`Other Levels`**, and **`Main Menu`** (hiding `Next Level`). Completed campaign rounds show **`Next Level`** (or `'CAMPAIGN COMPLETE!'` on Level 5), **`Play Again`**, **`Other Levels`**, and **`Main Menu`**. Custom Game rounds show **`Play Again`**, **`Edit Setup`**, and **`Main Menu`**.
 - **Hands-First Pinch-Pull-Aim-Release (`PullStateMachine` + `AimingSystem`)**:
   - Preserved intact with XRHand joint pinch hysteresis, tracking-loss grace window, smooth pull following, controller haptics, and desktop mouse drag fallback.
 
 ## 4. Key Source Files
 - `/src/xrDiagnostics.ts` & `/src/xrDiagnostics.test.ts` — WebXR runtime probing, resilient `immersive-ar` launcher, error surfacing, and unit tests.
-- `/src/menuInteraction.ts` — `MenuInteractionGuard` click debounce/transition lock, level card states, and Results formatting helpers.
-- `/src/systems/SpatialUISystem.ts` & `/src/systems/GameFlowSystem.ts` — IWSDK UI orchestration, decoupled Y anchor, WebXR dock/menu sync, campaign progression, and Custom Game flow.
+- `/src/menuInteraction.ts` & `/src/rollox.test.ts` — `MenuInteractionGuard` click debounce/transition lock, level card states, incomplete/complete Results presentation, and unit tests.
+- `/src/systems/SpatialUISystem.ts`, `/src/systems/GameFlowSystem.ts`, `/src/systems/RolloxPhysicsSystem.ts` — IWSDK UI orchestration, persistent world-root anchoring, idle physics gating, shot completion, campaign progression, and Custom Game flow.
+- `/src/geometry.ts` — Procedural PBR textures, arena geometry, and clean `restoreOpaqueMaterials()` shader teardown.
 - `/src/levels.ts`, `/src/types.ts`, `/src/pullInteraction.ts`, `/src/systems/AimingSystem.ts`, `/src/physics/BowlingWorld.ts` — Core physics, aiming, levels, and modular Alley Workshop compiler.
-- `/index.html`, `/src/index.css`, `/public/ui/*.uikitml`, `/public/scenes/main.iwsdk.scene.json` — Upgraded spatial UI panels and 2D XR dock.
+- `/iwsdk.config.json`, `/index.html`, `/src/index.css`, `/public/ui/*.uikitml`, `/public/scenes/main.iwsdk.scene.json` — Scene understanding config, spatial UI panels, and 2D XR dock.
 
 ## 5. Verification Status
-- Verified via `npm run lint`, `npm test`, `npm run build`, and headless Chromium runtime inspection (see latest turn report).
+- Verified via `npm test` (28/28 tests across 4 files), `npm run build` (`compile_applet`), `npm run lint` (`lint_applet`), and headless Chromium + IWER runtime E2E verification (see latest turn report).
 
 ## 6. Requires Physical Meta Quest Headset Verification
-- Real-world Meta Quest Browser `immersive-ar` passthrough startup over HTTPS (`VITE_HTTPS=true npm run dev`), real hand-tracking poke/ray menu clicking stability, `depth-sensing` occlusion blending, and `XRPlane` tabletop locking.
+- Real-world Meta Quest Browser `immersive-ar` passthrough startup over HTTPS (`VITE_HTTPS=true npm run dev`), physical hand-tracking poke/ray interaction on the incomplete-level / pause / results modals, `depth-sensing` occlusion blending, sustained Quest framerate after failed rounds, and `XRPlane` initial tabletop locking.

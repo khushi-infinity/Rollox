@@ -357,36 +357,52 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
       totalLevels: 5,
       unlockedLevelIndex: 1,
     });
+    expect(midPres.eyebrow).toBe('LEVEL COMPLETED!');
+    expect(midPres.bannerTone).toBe('success');
     expect(midPres.hasNextLevel).toBe(true);
     expect(midPres.showNextLevel).toBe(true);
     expect(midPres.showPlayAgain).toBe(true);
+    expect(midPres.showOtherLevels).toBe(true);
     expect(midPres.showEditSetup).toBe(false);
     expect(midPres.showMainMenu).toBe(true);
     expect(midPres.levelLabel).toBe('Level 1: Meadow Straight');
     expect(midPres.nextLevelLabel).toBe('Next Level');
     expect(midPres.playAgainLabel).toBe('Play Again');
+    expect(midPres.otherLevelsLabel).toBe('Other Levels');
     expect(midPres.mainMenuLabel).toBe('Main Menu');
     expect(midPres.primaryLabel).toBe('Next Level');
     expect(midPres.secondaryLabel).toBe('Play Again');
     expect(midPres.tertiaryLabel).toBe('Main Menu');
 
-    const failedLockedPres = buildResultsPresentation({
-      summary: {...lvl1Summary, stars: 0, pinsKnocked: 1, callout: 'TRY AGAIN'},
+    const failedZeroPres = buildResultsPresentation({
+      summary: {...lvl1Summary, stars: 0, pinsKnocked: 0, callout: 'MISS'},
       levelIndex: 0,
       totalLevels: 5,
       unlockedLevelIndex: 0,
     });
-    expect(failedLockedPres.showNextLevel).toBe(false);
-    expect(failedLockedPres.showPlayAgain).toBe(true);
-    expect(failedLockedPres.showMainMenu).toBe(true);
+    expect(failedZeroPres.eyebrow).toBe('LEVEL NOT COMPLETED');
+    expect(failedZeroPres.title).toBe('NO PINS KNOCKED');
+    expect(failedZeroPres.bannerTone).toBe('warning');
+    expect(failedZeroPres.showNextLevel).toBe(false);
+    expect(failedZeroPres.showPlayAgain).toBe(true);
+    expect(failedZeroPres.playAgainLabel).toBe('Try Again');
+    expect(failedZeroPres.showOtherLevels).toBe(true);
+    expect(failedZeroPres.otherLevelsLabel).toBe('Other Levels');
+    expect(failedZeroPres.showMainMenu).toBe(true);
+    expect(failedZeroPres.primaryLabel).toBe('Try Again');
+    expect(failedZeroPres.secondaryLabel).toBe('Other Levels');
 
-    const failedAlreadyUnlockedPres = buildResultsPresentation({
-      summary: {...lvl1Summary, stars: 0, pinsKnocked: 1, callout: 'TRY AGAIN'},
+    const failedPartialPres = buildResultsPresentation({
+      summary: {...lvl1Summary, stars: 0, pinsKnocked: 1, callout: 'NICE TRY'},
       levelIndex: 0,
       totalLevels: 5,
       unlockedLevelIndex: 1,
     });
-    expect(failedAlreadyUnlockedPres.showNextLevel).toBe(true);
+    expect(failedPartialPres.eyebrow).toBe('LEVEL NOT COMPLETED');
+    expect(failedPartialPres.title).toBe('ALMOST THERE!');
+    expect(failedPartialPres.showNextLevel).toBe(false);
+    expect(failedPartialPres.playAgainLabel).toBe('Try Again');
+    expect(failedPartialPres.showOtherLevels).toBe(true);
 
     const finalPres = buildResultsPresentation({
       summary: {...lvl1Summary, levelName: 'Crown Gauntlet'},
@@ -395,9 +411,12 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
       unlockedLevelIndex: 4,
     });
     expect(finalPres.isCampaignComplete).toBe(true);
+    expect(finalPres.eyebrow).toBe('CAMPAIGN COMPLETE!');
+    expect(finalPres.bannerTone).toBe('gold');
     expect(finalPres.hasNextLevel).toBe(false);
     expect(finalPres.showNextLevel).toBe(false);
     expect(finalPres.showPlayAgain).toBe(true);
+    expect(finalPres.showOtherLevels).toBe(true);
     expect(finalPres.showMainMenu).toBe(true);
     expect(finalPres.bannerText).toContain('CAMPAIGN COMPLETE');
     expect(finalPres.primaryLabel).toBe('Play Again');
@@ -411,6 +430,7 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
     expect(customPres.levelLabel).toBe('Custom Game: Meadow Straight');
     expect(customPres.showPlayAgain).toBe(true);
     expect(customPres.showNextLevel).toBe(false);
+    expect(customPres.showOtherLevels).toBe(false);
     expect(customPres.showEditSetup).toBe(true);
     expect(customPres.showMainMenu).toBe(true);
     expect(customPres.primaryLabel).toBe('Play Again');

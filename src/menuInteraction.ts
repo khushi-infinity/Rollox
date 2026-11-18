@@ -109,20 +109,25 @@ export function getCampaignLevelCardState(
   };
 }
 
+export type ResultsBannerTone = 'success' | 'warning' | 'gold';
+
 export interface ResultsPresentation {
   eyebrow: string;
   levelLabel: string;
   title: string;
   bannerText: string;
+  bannerTone: ResultsBannerTone;
   showBanner: boolean;
   hasNextLevel: boolean;
   isCampaignComplete: boolean;
   showPlayAgain: boolean;
   showNextLevel: boolean;
+  showOtherLevels: boolean;
   showEditSetup: boolean;
   showMainMenu: boolean;
   playAgainLabel: string;
   nextLevelLabel: string;
+  otherLevelsLabel: string;
   editSetupLabel: string;
   mainMenuLabel: string;
   primaryLabel: string;
@@ -136,22 +141,25 @@ export function buildResultsPresentation(params: {
   totalLevels: number;
   unlockedLevelIndex?: number;
 }): ResultsPresentation {
-  const {summary, levelIndex, totalLevels, unlockedLevelIndex = 0} = params;
+  const {summary, levelIndex, totalLevels} = params;
   if (summary.isCustomWorkshop) {
     return {
       eyebrow: 'CUSTOM GAME COMPLETE',
       levelLabel: `Custom Game: ${summary.levelName}`,
       title: summary.callout,
       bannerText: `Custom lane finished in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}.`,
+      bannerTone: 'success',
       showBanner: true,
       hasNextLevel: false,
       isCampaignComplete: false,
       showPlayAgain: true,
       showNextLevel: false,
+      showOtherLevels: false,
       showEditSetup: true,
       showMainMenu: true,
       playAgainLabel: 'Play Again',
       nextLevelLabel: 'Next Level',
+      otherLevelsLabel: 'Other Levels',
       editSetupLabel: 'Edit Setup',
       mainMenuLabel: 'Main Menu',
       primaryLabel: 'Play Again',
@@ -163,52 +171,80 @@ export function buildResultsPresentation(params: {
   const cleared = summary.stars > 0;
   const isFinalLevel = levelIndex >= totalLevels - 1;
   const isCampaignComplete = cleared && isFinalLevel;
-  const hasNextLevel =
-    !isFinalLevel && (cleared || unlockedLevelIndex > levelIndex);
+
+  if (!cleared) {
+    return {
+      eyebrow: 'LEVEL NOT COMPLETED',
+      levelLabel: `Level ${levelIndex + 1}: ${summary.levelName}`,
+      title: summary.pinsKnocked === 0 ? 'NO PINS KNOCKED' : 'ALMOST THERE!',
+      bannerText: 'Knock at least 30% of the pins to complete this level.',
+      bannerTone: 'warning',
+      showBanner: true,
+      hasNextLevel: false,
+      isCampaignComplete: false,
+      showPlayAgain: true,
+      showNextLevel: false,
+      showOtherLevels: true,
+      showEditSetup: false,
+      showMainMenu: true,
+      playAgainLabel: 'Try Again',
+      nextLevelLabel: 'Next Level',
+      otherLevelsLabel: 'Other Levels',
+      editSetupLabel: 'Edit Setup',
+      mainMenuLabel: 'Main Menu',
+      primaryLabel: 'Try Again',
+      secondaryLabel: 'Other Levels',
+      tertiaryLabel: 'Main Menu',
+    };
+  }
 
   if (isCampaignComplete) {
     return {
-      eyebrow: 'ROUND COMPLETE',
+      eyebrow: 'CAMPAIGN COMPLETE!',
       levelLabel: `Level ${levelIndex + 1}: ${summary.levelName}`,
       title: summary.callout,
       bannerText: 'CAMPAIGN COMPLETE! You conquered every Rollox alley!',
+      bannerTone: 'gold',
       showBanner: true,
       hasNextLevel: false,
       isCampaignComplete: true,
       showPlayAgain: true,
       showNextLevel: false,
+      showOtherLevels: true,
       showEditSetup: false,
       showMainMenu: true,
       playAgainLabel: 'Play Again',
       nextLevelLabel: 'Next Level',
+      otherLevelsLabel: 'Other Levels',
       editSetupLabel: 'Edit Setup',
       mainMenuLabel: 'Main Menu',
       primaryLabel: 'Play Again',
-      secondaryLabel: 'Level Select',
+      secondaryLabel: 'Other Levels',
       tertiaryLabel: 'Main Menu',
     };
   }
 
   return {
-    eyebrow: 'ROUND COMPLETE',
+    eyebrow: 'LEVEL COMPLETED!',
     levelLabel: `Level ${levelIndex + 1}: ${summary.levelName}`,
     title: summary.callout,
-    bannerText: cleared
-      ? 'Level cleared - next challenge unlocked!'
-      : 'Knock at least 30% of the pins to unlock the next level.',
+    bannerText: 'Level cleared - next challenge unlocked!',
+    bannerTone: 'success',
     showBanner: true,
-    hasNextLevel,
+    hasNextLevel: true,
     isCampaignComplete: false,
     showPlayAgain: true,
-    showNextLevel: hasNextLevel,
+    showNextLevel: true,
+    showOtherLevels: true,
     showEditSetup: false,
     showMainMenu: true,
     playAgainLabel: 'Play Again',
     nextLevelLabel: 'Next Level',
+    otherLevelsLabel: 'Other Levels',
     editSetupLabel: 'Edit Setup',
     mainMenuLabel: 'Main Menu',
-    primaryLabel: hasNextLevel ? 'Next Level' : 'Play Again',
-    secondaryLabel: hasNextLevel ? 'Play Again' : 'Main Menu',
+    primaryLabel: 'Next Level',
+    secondaryLabel: 'Play Again',
     tertiaryLabel: 'Main Menu',
   };
 }
