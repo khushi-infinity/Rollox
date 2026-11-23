@@ -60,12 +60,8 @@ export class ParticleBurstPool extends THREE.Group {
     this.name = 'Rollox VFX Pool';
 
     const burstGeo = new THREE.OctahedronGeometry(0.012, 0);
-    const burstMat = new THREE.MeshStandardMaterial({
+    const burstMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      roughness: 0.3,
-      metalness: 0.2,
-      emissive: 0x332200,
-      emissiveIntensity: 0.4,
     });
     this.burstMesh = new THREE.InstancedMesh(burstGeo, burstMat, POOL_SIZE);
     this.burstMesh.frustumCulled = false;
@@ -184,8 +180,9 @@ export class ParticleBurstPool extends THREE.Group {
   }
 
   emitChargeSpark(pos: THREE.Vector3, power01: number, dt: number): void {
+    if (this.lowLagMode) return;
     this.chargeCooldown -= dt;
-    const interval = Math.max(0.032, 0.095 - power01 * 0.055);
+    const interval = Math.max(0.09, 0.16 - power01 * 0.06);
     if (this.chargeCooldown > 0) return;
     this.chargeCooldown = interval;
 

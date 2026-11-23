@@ -36,9 +36,9 @@ export const PULL_CONSTANTS = {
   /** Watchdog timeout (seconds) if held input freezes completely without motion. */
   STUCK_HOLD_TIMEOUT_SEC: 15.0,
   /** Exponential smoothing rate (1/s) for ball-to-hand attachment. */
-  HAND_FOLLOW_DAMP_LAMBDA: 26,
+  HAND_FOLLOW_DAMP_LAMBDA: 36,
   /** Exponential decay rate (1/s) pulling the grabbed ball smoothly onto the hand anchor. */
-  GRAB_OFFSET_DECAY_LAMBDA: 20,
+  GRAB_OFFSET_DECAY_LAMBDA: 28,
   /** Multiplier on physical backward Z pull so seated ~20cm pulls reach 100% power cleanly. */
   DESK_DEPTH_PULL_SCALE: 1.18,
 } as const;
@@ -390,7 +390,11 @@ export class PullStateMachine {
 
     // Slight tactile lift while cradled back along the pull pocket
     const targetY = BALL_RADIUS + Math.min(0.012, this.clampedPullZ * 0.04);
-    const alpha = dampFactor(PULL_CONSTANTS.HAND_FOLLOW_DAMP_LAMBDA, dt);
+    const followLambda =
+      this.sourceKind === 'mouse'
+        ? 75
+        : PULL_CONSTANTS.HAND_FOLLOW_DAMP_LAMBDA;
+    const alpha = dampFactor(followLambda, dt);
     this.smoothedBallLocal.x +=
       (this.clampedPullX - this.smoothedBallLocal.x) * alpha;
     this.smoothedBallLocal.y +=

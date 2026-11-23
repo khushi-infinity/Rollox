@@ -25,7 +25,7 @@ import {
 import type {GameSettings, GrabState} from '../types';
 import {RolloxPhysicsSystem} from './PhysicsSystem';
 
-const TRAJ_DOT_COUNT = 22;
+const TRAJ_DOT_COUNT = 16;
 
 export interface AimingCallbacks {
   getSettings: () => GameSettings;
@@ -115,9 +115,11 @@ export class AimingSystem extends createSystem({}) {
   private tetherLine!: THREE.Line;
   private tetherGeo!: THREE.BufferGeometry;
   private tetherMat!: THREE.LineBasicMaterial;
-  private trajectoryDots: THREE.Mesh[] = [];
+  private trajDotsMesh!: THREE.InstancedMesh;
   private trajDotGeo!: THREE.SphereGeometry;
   private trajDotMat!: THREE.MeshBasicMaterial;
+  private trajDummy = new THREE.Object3D();
+  private lastTickPower = -1;
   private disposables: Array<{dispose: () => void}> = [];
 
   // Scratch vectors
@@ -280,6 +282,7 @@ export class AimingSystem extends createSystem({}) {
     this.activeSourceRef = null;
     this.mouseDrag.active = false;
     this.mouseDrag.pointerId = -1;
+    this.lastTickPower = -1;
     this.parkHandleAtPedestal();
     this.hideAimGuides();
     this.setGrabState('IDLE');
@@ -386,19 +389,21 @@ export class AimingSystem extends createSystem({}) {
     this.tetherLine.visible = false;
     this.guidesGroup.add(this.tetherLine);
 
-    // Aim trajectory dots
-    this.trajDotGeo = new THREE.SphereGeometry(0.0085, 10, 8);
+    // Aim trajectory dots (single InstancedMesh = 1 draw call)
+    this.trajDotGeo = new THREE.SphereGeometry(0.0085, 8, 6);
     this.trajDotMat = new THREE.MeshBasicMaterial({
       color: 0x7dd3fc,
       transparent: true,
       opacity: 0.88,
     });
-    for (let i = 0; i < TRAJ_DOT_COUNT; i++) {
-      const dot = new THREE.Mesh(this.trajDotGeo, this.trajDotMat);
-      dot.visible = false;
-      this.trajectoryDots.push(dot);
-      this.guidesGroup.add(dot);
-    }
+    this.trajDotsMesh = new THREE.InstancedMesh(
+      this.trajDotGeo,
+      this.trajDotMat,
+      TRAJ_DOT_COUNT
+    );
+    this.trajDotsMesh.frustumCulled = false;
+    this.trajDotsMesh.visible = false;
+    this.guidesGroup.add(this.trajDotsMesh);
 
     this.disposables.push(
       haloGeo,
@@ -448,16 +453,31 @@ export class AimingSystem extends createSystem({}) {
       );
       this._raycaster.setFromCamera(this._ndc, this.camera);
 
+      this.rayHitMesh.updateWorldMatrix(true, false);
       const isHovered = this.rayHandleEntity?.hasComponent(Hovered) ?? false;
       const directHit = this._raycaster.intersectObject(this.rayHitMesh, false);
-      if (!isHovered && directHit.length === 0) return;
 
-      if (!updateNdcAndPlane(e.clientX, e.clientY)) return;
+      let nearBallOnTable = false;
+      const hitPlane = updateNdcAndPlane(e.clientX, e.clientY);
+      if (hitPlane) {
+        this.worldToArenaLocal(this._mouseHitWorld, this._localPos);
+        const distFromTee = Math.hypot(this._localPos.x, this._localPos.z);
+        nearBallOnTable = distFromTee <= 0.24;
+      }
+
+      if (!isHovered && directHit.length === 0 && !nearBallOnTable) return;
+      if (!hitPlane) return;
 
       this.mouseDrag.active = true;
       this.mouseDrag.pointerId = e.pointerId;
       this.mouseDrag.clientX = e.clientX;
       this.mouseDrag.clientY = e.clientY;
+
+      try {
+        dom.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture is unavailable in synthetic tests
+      }
 
       this.worldToArenaLocal(this._mouseHitWorld, this._localPos);
       this.worldToArenaLocal(this.lastBallWorldPos, this._ballLocal);
@@ -472,6 +492,10 @@ export class AimingSystem extends createSystem({}) {
       if (e.pointerId !== this.mouseDrag.pointerId) return;
       this.mouseDrag.clientX = e.clientX;
       this.mouseDrag.clientY = e.clientY;
+      // Recover immediately if the user released the mouse button outside the iframe
+      if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) {
+        this.mouseDrag.active = false;
+      }
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -480,18 +504,31 @@ export class AimingSystem extends createSystem({}) {
       this.mouseDrag.clientX = e.clientX;
       this.mouseDrag.clientY = e.clientY;
       this.mouseDrag.active = false;
+      try {
+        if (dom.hasPointerCapture(e.pointerId)) {
+          dom.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore capture release errors
+      }
+    };
+
+    const onWindowBlur = () => {
+      this.mouseDrag.active = false;
     };
 
     dom.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('blur', onWindowBlur);
 
     this.cleanupFuncs.push(() => {
       dom.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('blur', onWindowBlur);
     });
   }
 
@@ -516,9 +553,7 @@ export class AimingSystem extends createSystem({}) {
     this.powerRingMesh.visible = false;
     this.aimTargetMesh.visible = false;
     this.tetherLine.visible = false;
-    for (const dot of this.trajectoryDots) {
-      dot.visible = false;
-    }
+    this.trajDotsMesh.visible = false;
   }
 
   private worldToArenaLocal(worldPos: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
@@ -761,7 +796,8 @@ export class AimingSystem extends createSystem({}) {
     const canAim = this.callbacks.isAimingAllowed();
 
     if (this.rayHandleEntity.object3D) {
-      this.rayHandleEntity.object3D.pointerEvents = canAim ? 'auto' : 'none';
+      this.rayHandleEntity.object3D.pointerEvents =
+        canAim && !this.pullSM.active ? 'auto' : 'none';
     }
 
     if (!canAim) {
@@ -855,12 +891,14 @@ export class AimingSystem extends createSystem({}) {
             this.ballEntity.object3D.position.copy(this._ballWorld);
           }
         }
-        physicsSystem?.bowlingWorld.setBallKinematicPosition(this._ballWorld);
-
-        if (stepRes.launch.power01 > 0.05) {
+        if (
+          stepRes.launch.power01 > 0.05 &&
+          Math.abs(stepRes.launch.power01 - this.lastTickPower) >= 0.06
+        ) {
+          this.lastTickPower = stepRes.launch.power01;
           physicsSystem?.audio.playPowerTick(stepRes.launch.power01);
         }
-        if (stepRes.launch.power01 > 0.2) {
+        if (!settings.lowLagMode && stepRes.launch.power01 > 0.25) {
           physicsSystem?.vfx.emitChargeSpark(this._ballWorld, stepRes.launch.power01, dt);
         }
         if (stepRes.crossedPowerTier) {
@@ -989,25 +1027,25 @@ export class AimingSystem extends createSystem({}) {
     posAttr.setXYZ(1, pullX, BALL_RADIUS, pullZ);
     posAttr.needsUpdate = true;
 
-    // Projected alley trajectory dots & end target reticle
+    // Projected alley trajectory dots (single InstancedMesh) & end target reticle
     const previewActive = showTrajectory && launch.canLaunch;
+    this.trajDotsMesh.visible = previewActive;
     let lastX = pullX;
     let lastZ = pullZ;
-    for (let i = 0; i < TRAJ_DOT_COUNT; i++) {
-      const dot = this.trajectoryDots[i];
-      if (!previewActive) {
-        dot.visible = false;
-        continue;
+    if (previewActive) {
+      for (let i = 0; i < TRAJ_DOT_COUNT; i++) {
+        const t = (i + 1) * 0.044;
+        const dist = launch.speed * t;
+        const x = pullX + launch.dirX * dist;
+        const z = pullZ + launch.dirZ * dist;
+        this.trajDummy.position.set(x, BALL_RADIUS * 0.52, z);
+        this.trajDummy.scale.setScalar(Math.max(0.35, 1 - i * 0.038));
+        this.trajDummy.updateMatrix();
+        this.trajDotsMesh.setMatrixAt(i, this.trajDummy.matrix);
+        lastX = x;
+        lastZ = z;
       }
-      dot.visible = true;
-      const t = (i + 1) * 0.034;
-      const dist = launch.speed * t;
-      const x = pullX + launch.dirX * dist;
-      const z = pullZ + launch.dirZ * dist;
-      dot.position.set(x, BALL_RADIUS * 0.52, z);
-      dot.scale.setScalar(Math.max(0.32, 1 - i * 0.03));
-      lastX = x;
-      lastZ = z;
+      this.trajDotsMesh.instanceMatrix.needsUpdate = true;
     }
 
     this.aimTargetMesh.visible = previewActive;

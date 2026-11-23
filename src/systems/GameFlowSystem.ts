@@ -162,6 +162,7 @@ export class GameFlowSystem
   private groundMeshRegistered = false;
   private roundResolved = false;
   private isLevelLoading = false;
+  private hudReadyPrompt = 'READY TO BOWL';
 
   init(): void {
     this.loadPersistence();
@@ -230,11 +231,13 @@ export class GameFlowSystem
         const ui = this.uiSystem;
         if (!ui) return;
         if (grabState === 'IDLE' || grabState === 'HOVER') {
-          ui.updateHudPower(0, grabState, false);
+          ui.updateHudPower(0, grabState, false, this.hudReadyPrompt);
         }
       },
       onGrabStarted: () => {
         this.physicsSystem?.audio.playGrab();
+        this.uiSystem?.hideCallout();
+        this.uiSystem?.setHudInteractiveDuringAim(false);
         if (this.sm.state === 'READY') {
           this.sm.transitionGame('AIMING');
         } else if (this.sm.state === 'WORKSHOP_TEST') {
@@ -249,7 +252,8 @@ export class GameFlowSystem
         this.uiSystem?.updateHudPower(
           launch.power01,
           'AIMING',
-          launch.canLaunch
+          launch.canLaunch,
+          this.hudReadyPrompt
         );
         if (this.sm.state === 'ONBOARDING') {
           if (this.onboardingStep === 'pull' && launch.power01 >= 0.22) {
@@ -265,15 +269,17 @@ export class GameFlowSystem
         }
       },
       onShotReleased: (worldOrigin, worldVel, worldSpin, launch) => {
+        this.uiSystem?.setHudInteractiveDuringAim(true);
         this.launchShot(worldOrigin, worldVel, worldSpin, launch.power01);
       },
       onShotCancelled: () => {
+        this.uiSystem?.setHudInteractiveDuringAim(true);
         if (this.sm.state === 'AIMING') {
           this.sm.transitionGame('READY');
         } else if (this.sm.state === 'WORKSHOP_TEST') {
           this.workshopTestPhase = 'READY';
         }
-        this.uiSystem?.updateHudPower(0, 'IDLE', false);
+        this.uiSystem?.updateHudPower(0, 'IDLE', false, this.hudReadyPrompt);
       },
       onEmergencyResetRequested: () => {
         this.onEmergencyUnstick();
@@ -281,6 +287,8 @@ export class GameFlowSystem
       onPauseRequested: () => {
         if (this.sm.state === 'PAUSED') {
           this.onModalResume();
+        } else if (this.sm.state === 'RESULT') {
+          this.onModalMainMenu();
         } else if (this.isSubScreenOpen) {
           this.onCloseSubScreen();
         } else {
@@ -575,6 +583,8 @@ export class GameFlowSystem
           this.onCloseSubScreen();
         } else if (this.sm.state === 'PAUSED') {
           this.onModalResume();
+        } else if (this.sm.state === 'RESULT') {
+          this.onModalMainMenu();
         } else if (
           this.sm.state === 'READY' ||
           this.sm.state === 'AIMING' ||
@@ -590,7 +600,9 @@ export class GameFlowSystem
           this.onBackToMenu();
         }
       } else if (e.code === 'Space' || e.key === 'Backspace') {
-        if (
+        if (this.sm.state === 'RESULT') {
+          this.onModalPlayAgain();
+        } else if (
           this.sm.state === 'READY' ||
           this.sm.state === 'AIMING' ||
           this.sm.state === 'BALL_IN_MOTION' ||
@@ -666,6 +678,7 @@ export class GameFlowSystem
     this.roundResolved = false;
     this.ballStillTimer = 0;
     this.settlingTimer = 0;
+    this.hudReadyPrompt = 'READY TO BOWL';
   }
 
   private async rebuildCurrentLevel(
@@ -774,6 +787,7 @@ export class GameFlowSystem
     // 5. Physics setup
     if (physics) {
       physics.setBallDynamicSync(false);
+      physics.setDynamicPhysicsActive(this.isDynamicPhysicsActive());
       physics.setSimulationActive(this.isPhysicsSimulationStateActive());
       physics.bowlingWorld.buildLevelPhysics(
         cfg,
@@ -816,6 +830,17 @@ export class GameFlowSystem
       totalScore: this.levelScore,
       muted: this.settings.muted,
     });
+  }
+
+  private isDynamicPhysicsActive(): boolean {
+    const s = this.sm.state;
+    return (
+      s === 'BALL_IN_MOTION' ||
+      s === 'SETTLING' ||
+      (s === 'WORKSHOP_TEST' &&
+        (this.workshopTestPhase === 'BALL_IN_MOTION' ||
+          this.workshopTestPhase === 'SETTLING'))
+    );
   }
 
   private isPhysicsSimulationStateActive(): boolean {
@@ -867,6 +892,7 @@ export class GameFlowSystem
       ui.setVisiblePanels(visible);
     }
 
+    this.physicsSystem?.setDynamicPhysicsActive(this.isDynamicPhysicsActive());
     this.physicsSystem?.setSimulationActive(this.isPhysicsSimulationStateActive());
   }
 
@@ -903,6 +929,7 @@ export class GameFlowSystem
     physics.vfx.emitBurst(worldOrigin, 10, [0x7dd3fc, 0xfde047], 0.85, 0.7);
     physics.bowlingWorld.launchBall(worldOrigin, worldVel, worldSpin);
     physics.setBallDynamicSync(true);
+    physics.setDynamicPhysicsActive(true);
     physics.setSimulationActive(true);
 
     this.pinsKnockedBeforeShot = this.pinsKnocked;
@@ -958,6 +985,16 @@ export class GameFlowSystem
       state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'BALL_IN_MOTION';
     const inTestSettling =
       state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'SETTLING';
+
+    // Safeguard: never leave the player stranded in READY/WORKSHOP_TEST with 0 shots remaining
+    if (
+      this.shotsLeft <= 0 &&
+      (state === 'READY' ||
+        (state === 'WORKSHOP_TEST' && this.workshopTestPhase === 'READY'))
+    ) {
+      this.finalizeShot(state === 'WORKSHOP_TEST');
+      return;
+    }
 
     if (state === 'BALL_IN_MOTION' || inTestFlight) {
       const simDt = Math.min(0.05, Math.max(0.0001, delta));
@@ -1029,6 +1066,7 @@ export class GameFlowSystem
       }
 
       if (
+        (this.pinsKnocked >= this.totalPins && this.settlingTimer > 0.35) ||
         (this.settlingTimer > 0.45 && !evalRes.anyPinMoving) ||
         this.settlingTimer > 1.2
       ) {
@@ -1060,7 +1098,9 @@ export class GameFlowSystem
     this.levelScore += outcome.shotPoints;
     this.totalScore += outcome.shotPoints;
 
-    this.uiSystem?.showCallout(outcome.callout, outcome.calloutColor, 2200);
+    const roundComplete = outcome.isAllCleared || this.shotsLeft <= 0;
+    const remainingPins = Math.max(0, this.totalPins - this.pinsKnocked);
+
     const deckBurstPos = this._ballPos
       .set(
         this.currentLevelConfig.pinDeck.x,
@@ -1096,13 +1136,24 @@ export class GameFlowSystem
       new THREE.Vector3(0, BALL_RADIUS, 0)
     );
     physics.setBallDynamicSync(false);
+    physics.setDynamicPhysicsActive(false);
     this.aimingSystem?.forceResetToPedestal();
 
     this.syncHud();
 
-    const roundComplete = outcome.isAllCleared || this.shotsLeft <= 0;
     if (roundComplete) {
+      const transitionedToResult = this.sm.transitionGame('RESULT');
+      if (!transitionedToResult) {
+        console.warn(
+          `[GameFlowSystem] Could not transition from ${this.sm.state} to RESULT; forcing safe menu recovery.`
+        );
+        this.roundResolved = false;
+        this.onBackToMenu();
+        return;
+      }
+
       this.roundResolved = true;
+      physics.setDynamicPhysicsActive(false);
       physics.setSimulationActive(false);
 
       const stars = calculateLevelStars(
@@ -1154,7 +1205,6 @@ export class GameFlowSystem
         isCustomWorkshop: isWorkshopTest,
       };
       this.lastSummary = summary;
-      this.sm.transitionGame('RESULT');
       this.uiSystem?.updateModal(
         isWorkshopTest ? 'WORKSHOP_RESULT' : 'RESULT',
         summary,
@@ -1163,13 +1213,24 @@ export class GameFlowSystem
       );
       this.refreshPanelsVisibility();
     } else {
+      const pinWord = remainingPins === 1 ? 'PIN' : 'PINS';
+      const shotWord = this.shotsLeft === 1 ? 'SHOT' : 'SHOTS';
+      const calloutText =
+        newlyFallen > 0
+          ? `+${newlyFallen} ${newlyFallen === 1 ? 'PIN' : 'PINS'}! ${remainingPins} ${pinWord} LEFT - BOWL SHOT ${this.shotsUsed + 1}!`
+          : `NO PINS! ${remainingPins} ${pinWord} LEFT - ${this.shotsLeft} ${shotWord} TO GO!`;
+      const calloutColor = newlyFallen > 0 ? '#38bdf8' : '#fbbf24';
+
+      this.hudReadyPrompt = `${remainingPins} ${pinWord} LEFT · ${this.shotsLeft} ${shotWord} LEFT — BOWL AGAIN!`;
+
       if (!isWorkshopTest) {
         this.sm.transitionGame('READY');
       } else {
         this.workshopTestPhase = 'READY';
       }
+      this.uiSystem?.showCallout(calloutText, calloutColor, 2400);
       this.refreshPanelsVisibility();
-      this.uiSystem?.updateHudPower(0, 'IDLE', false);
+      this.uiSystem?.updateHudPower(0, 'IDLE', false, this.hudReadyPrompt);
     }
   }
 
@@ -1184,6 +1245,7 @@ export class GameFlowSystem
   onOpenLevelSelect(): void {
     this.physicsSystem?.audio.playClick();
     this.isSubScreenOpen = false;
+    this.roundResolved = false;
     this.subScreenReturnState = 'MAIN_MENU';
     this.uiSystem?.updateLevelSelect(this.progress);
     this.sm.transitionGame('LEVEL_SELECT');
@@ -1211,6 +1273,7 @@ export class GameFlowSystem
   onOpenWorkshop(): void {
     this.physicsSystem?.audio.playClick();
     this.isSubScreenOpen = false;
+    this.roundResolved = false;
     this.currentLevelConfig = compileWorkshopLevel(this.workshopLayout);
     this.selectedWorkshopSegIdx = Math.max(
       0,
@@ -1245,6 +1308,8 @@ export class GameFlowSystem
   onBackToMenu(): void {
     this.physicsSystem?.audio.playClick();
     this.isSubScreenOpen = false;
+    this.roundResolved = false;
+    this.physicsSystem?.setBallDynamicSync(false);
     this.sm.transitionGame('MAIN_MENU');
     this.aimingSystem?.forceResetToPedestal();
     this.uiSystem?.updateMainMenu(this.progress);
@@ -1304,13 +1369,15 @@ export class GameFlowSystem
         new THREE.Vector3(0, BALL_RADIUS, 0)
       );
       this.physicsSystem?.setBallDynamicSync(false);
+      this.physicsSystem?.setDynamicPhysicsActive(false);
       this.aimingSystem?.forceResetToPedestal();
+      this.uiSystem?.setHudInteractiveDuringAim(true);
       if (this.sm.state !== 'WORKSHOP_TEST' && this.sm.state !== 'ONBOARDING') {
         this.sm.transitionGame('READY');
       } else if (this.sm.state === 'WORKSHOP_TEST') {
         this.workshopTestPhase = 'READY';
       }
-      this.uiSystem?.updateHudPower(0, 'IDLE', false);
+      this.uiSystem?.updateHudPower(0, 'IDLE', false, this.hudReadyPrompt);
       this.uiSystem?.showCallout(
         refunded ? 'SHOT CANCELLED - READY TO BOWL' : 'BALL RESET TO TEE',
         '#7dd3fc',
@@ -1319,9 +1386,38 @@ export class GameFlowSystem
     }
   }
 
+  onRetryLevel(): void {
+    if (this.isLevelLoading) return;
+    this.physicsSystem?.audio.playClick();
+    this.roundResolved = false;
+    this.isSubScreenOpen = false;
+    const isCustom =
+      this.sm.state === 'WORKSHOP_TEST' ||
+      this.currentLevelConfig.layout === 'custom';
+    if (isCustom) {
+      this.onWorkshopTestAlley();
+    } else {
+      void this.loadCampaignLevel(this.currentLevelIndex, true).then(() => {
+        this.uiSystem?.showCallout('LEVEL RESTARTED - FRESH RACK!', '#38bdf8', 1500);
+      });
+    }
+  }
+
   onRecenterTable(): void {
     this.physicsSystem?.audio.playClick();
     this.hasUserPlaced = true;
+
+    const is2D =
+      this.world.visibilityState.value === VisibilityState.NonImmersive &&
+      this.world.session == null;
+    if (is2D) {
+      this.arenaBasePos.set(0, ARENA_TABLE_Y, ARENA_ORIGIN_Z);
+      this.arenaYaw = 0;
+      this.syncAllTransforms();
+      this.uiSystem?.showCallout('TABLE RECENTERED', '#38bdf8', 1300);
+      return;
+    }
+
     const cam = this.camera;
     cam.getWorldPosition(this._headPos);
     cam.getWorldDirection(this._headForward);

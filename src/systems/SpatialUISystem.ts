@@ -67,6 +67,7 @@ export interface SpatialUIActionHandler {
   onReplayOnboarding: () => void;
   onSkipOnboarding: () => void;
   onResetBall: () => void;
+  onRetryLevel: () => void;
   onRecenterTable: () => void;
   onAdjustHeight: (deltaM: number) => void;
   onAdjustDistance: (deltaM: number) => void;
@@ -168,6 +169,19 @@ export class SpatialUISystem extends createSystem({}) {
   private xrLaunching = false;
   private xrLastError: string | null = null;
   private xrEnabledFeaturesNote: string | null = null;
+
+  private activeModalMode: ModalMode | null = null;
+  private lastModalSummary: ScoreSummary | null = null;
+  private lastModalLevelIndex = 0;
+  private lastModalUnlockedIndex = 0;
+  private isModalRequested = false;
+  private textCache = new Map<string, string>();
+  private lastPowerBarPct = -1;
+  private lastPowerBarColor = '';
+  private lastHudAimUpdateAt = 0;
+  private lastHudGrabState: GrabState | null = null;
+  private lastHudCanLaunch = false;
+  private hudAimSuspended = false;
 
   private attachedToWorldRoot = false;
   private worldRootEntity: Entity | null = null;
@@ -281,8 +295,12 @@ export class SpatialUISystem extends createSystem({}) {
   }
 
   private setText(panelKey: PanelKey, id: string, text: string): void {
+    const cacheKey = `${panelKey}:${id}`;
+    if (this.textCache.get(cacheKey) === text) return;
     const el = this.panels.get(panelKey)?.asset.getElementById(id);
-    el?.setProperties({text});
+    if (!el) return;
+    this.textCache.set(cacheKey, text);
+    el.setProperties({text});
   }
 
   private setProps(
@@ -327,6 +345,9 @@ export class SpatialUISystem extends createSystem({}) {
 
     // HUD
     this.bindClick('hud', 'hud-reset-ball', () => this.handler?.onResetBall());
+    this.bindClick('hud', 'hud-retry-level', () =>
+      this.handler?.onRetryLevel()
+    );
     this.bindClick('hud', 'hud-recenter', () =>
       this.handler?.onRecenterTable()
     );
@@ -707,7 +728,13 @@ export class SpatialUISystem extends createSystem({}) {
         : !is2D
           ? '#991b1b'
           : '#1e293b',
+      color: '#f8fafc',
     });
+    this.setProps('main-menu', 'btn-menu-xr-label', {
+      color: disabled ? '#cbd5e1' : '#f8fafc',
+    });
+
+    this.syncModalPresentationMode();
   }
 
   private wire2DDock(): void {
@@ -770,12 +797,239 @@ export class SpatialUISystem extends createSystem({}) {
       );
     }
 
+    const bindDomModalClick = (id: string, fn: () => void) => {
+      const btn = document.getElementById(id) as HTMLButtonElement | null;
+      if (!btn) return;
+      const onClick = () => {
+        if (!this.isModalRequested) return;
+        if (!this.interactionGuard.canActivate(`dom:${id}`, performance.now())) {
+          return;
+        }
+        fn();
+      };
+      btn.addEventListener('click', onClick);
+      this.cleanupFuncs.push(() => btn.removeEventListener('click', onClick));
+    };
+
+    bindDomModalClick('res-btn-resume', () => this.handler?.onModalResume());
+    bindDomModalClick('res-btn-next', () => this.handler?.onModalNextLevel());
+    bindDomModalClick('res-btn-retry', () => this.handler?.onModalPlayAgain());
+    bindDomModalClick('res-btn-levels', () => this.handler?.onModalLevelSelect());
+    bindDomModalClick('res-btn-edit', () => this.handler?.onModalEditSetup());
+    bindDomModalClick('res-btn-settings', () => this.handler?.onOpenSettings());
+    bindDomModalClick('res-btn-menu', () => this.handler?.onModalMainMenu());
+
     const unsub = this.world.visibilityState.subscribe(() => {
       this.syncXRDiagnosticsUI();
     });
     this.cleanupFuncs.push(unsub);
 
     void this.refreshXRCapabilities();
+  }
+
+  private isNonImmersive2D(): boolean {
+    return (
+      this.world.visibilityState.value === VisibilityState.NonImmersive &&
+      this.world.session == null
+    );
+  }
+
+  private applyPanelInteractivity(
+    key: PanelKey,
+    panel: ManagedPanel,
+    visible: boolean
+  ): void {
+    panel.asset.visible = visible;
+
+    const allowRay = visible && INTERACTIVE_PANELS.has(key);
+    const allowPoke = visible && POKE_ENABLED_PANELS.has(key);
+
+    if (allowRay) {
+      if (!panel.entity.hasComponent(RayInteractable)) {
+        panel.entity.addComponent(RayInteractable);
+      }
+    } else if (panel.entity.hasComponent(RayInteractable)) {
+      panel.entity.removeComponent(RayInteractable);
+    }
+
+    if (allowPoke) {
+      if (!panel.entity.hasComponent(PokeInteractable)) {
+        panel.entity.addComponent(PokeInteractable);
+      }
+    } else if (panel.entity.hasComponent(PokeInteractable)) {
+      panel.entity.removeComponent(PokeInteractable);
+    }
+
+    panel.asset.pointerEvents = allowRay ? 'auto' : 'none';
+  }
+
+  private syncModalPresentationMode(): void {
+    const overlay = document.getElementById('rollox-result-overlay');
+    const is2D = this.isNonImmersive2D();
+    const show2DOverlay =
+      this.isModalRequested && is2D && this.activeModalMode !== null;
+
+    if (overlay) {
+      if (show2DOverlay) {
+        this.sync2DResultOverlayContent();
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    const modalPanel = this.panels.get('modal');
+    if (modalPanel) {
+      const show3DModal = this.isModalRequested && !show2DOverlay;
+      this.applyPanelInteractivity('modal', modalPanel, show3DModal);
+    }
+  }
+
+  private sync2DResultOverlayContent(): void {
+    const overlay = document.getElementById('rollox-result-overlay');
+    if (!overlay || !this.activeModalMode) return;
+
+    const setDomText = (id: string, value: string) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+    const setBtn = (
+      id: string,
+      visible: boolean,
+      label?: string,
+      variant?: 'primary' | 'secondary' | 'ghost'
+    ) => {
+      const el = document.getElementById(id) as HTMLButtonElement | null;
+      if (!el) return;
+      el.classList.toggle('hidden', !visible);
+      if (label !== undefined) el.textContent = label;
+      if (variant) {
+        el.classList.remove(
+          'result-btn-primary',
+          'result-btn-secondary',
+          'result-btn-ghost'
+        );
+        el.classList.add(`result-btn-${variant}`);
+      }
+    };
+
+    const banner = document.getElementById('res-banner');
+    const summary = this.lastModalSummary;
+
+    if (this.activeModalMode === 'PAUSE') {
+      overlay.setAttribute('data-tone', 'pause');
+      setDomText('res-eyebrow', 'GAME PAUSED');
+      setDomText(
+        'res-level-name',
+        summary
+          ? summary.isCustomWorkshop
+            ? `Custom Game: ${summary.levelName}`
+            : `Level ${this.lastModalLevelIndex + 1}: ${summary.levelName}`
+          : `Level ${this.lastModalLevelIndex + 1}`
+      );
+      setDomText('res-title', summary ? summary.levelName : 'Take a Breather');
+      setDomText('res-stars', 'SEATED MIXED-REALITY BOWLING');
+      banner?.classList.add('hidden');
+      setDomText('res-summary', 'Your lane stays anchored where you left it.');
+      setDomText(
+        'res-pins-val',
+        summary ? `${summary.pinsKnocked} / ${summary.totalPins}` : '0 / 10'
+      );
+      setDomText('res-score-val', summary ? `${summary.levelScore}` : '0');
+      setDomText('res-best-label', 'SHOTS USED');
+      setDomText(
+        'res-best-val',
+        summary ? `${summary.shotsUsed} / ${summary.maxShots}` : '0 / 3'
+      );
+
+      setBtn('res-btn-resume', true, 'Resume Game', 'primary');
+      setBtn('res-btn-next', false);
+      setBtn(
+        'res-btn-retry',
+        true,
+        summary?.isCustomWorkshop ? 'Restart Custom Game' : 'Restart Level',
+        'secondary'
+      );
+      setBtn(
+        'res-btn-levels',
+        !summary?.isCustomWorkshop,
+        'Other Levels',
+        'secondary'
+      );
+      setBtn(
+        'res-btn-edit',
+        Boolean(summary?.isCustomWorkshop),
+        'Edit Setup',
+        'secondary'
+      );
+      setBtn('res-btn-settings', true, 'Settings', 'secondary');
+      setBtn('res-btn-menu', true, 'Main Menu', 'ghost');
+      return;
+    }
+
+    if (!summary) return;
+
+    const pres = buildResultsPresentation({
+      summary,
+      levelIndex: this.lastModalLevelIndex,
+      totalLevels: CAMPAIGN_LEVELS.length,
+      unlockedLevelIndex: this.lastModalUnlockedIndex,
+    });
+
+    overlay.setAttribute('data-tone', pres.bannerTone);
+    setDomText('res-eyebrow', pres.eyebrow);
+    setDomText('res-level-name', pres.levelLabel);
+    setDomText('res-title', pres.title);
+    const filledStars = '★'.repeat(summary.stars);
+    const emptyStars = '☆'.repeat(3 - summary.stars);
+    setDomText('res-stars', `${filledStars}${emptyStars} (${summary.stars} / 3 STARS)`);
+    if (banner) {
+      banner.classList.toggle('hidden', !pres.showBanner);
+      banner.textContent = pres.bannerText;
+    }
+    setDomText(
+      'res-summary',
+      summary.pinsKnocked >= summary.totalPins
+        ? `Clean sweep in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}!`
+        : `Knocked ${summary.pinsKnocked} of ${summary.totalPins} pins in ${summary.shotsUsed} of ${summary.maxShots} shots.`
+    );
+    setDomText('res-pins-val', `${summary.pinsKnocked} / ${summary.totalPins}`);
+    setDomText('res-score-val', `${summary.levelScore}`);
+    if (summary.isCustomWorkshop) {
+      setDomText('res-best-label', 'SHOTS USED');
+      setDomText('res-best-val', `${summary.shotsUsed} / ${summary.maxShots}`);
+    } else {
+      setDomText('res-best-label', 'BEST SCORE');
+      setDomText('res-best-val', `${summary.bestScore ?? summary.levelScore}`);
+    }
+
+    setBtn('res-btn-resume', false);
+    setBtn('res-btn-settings', false);
+    setBtn(
+      'res-btn-next',
+      pres.showNextLevel,
+      `${pres.nextLevelLabel} →`,
+      'primary'
+    );
+    setBtn(
+      'res-btn-retry',
+      pres.showPlayAgain,
+      pres.playAgainLabel,
+      pres.showNextLevel ? 'secondary' : 'primary'
+    );
+    setBtn(
+      'res-btn-levels',
+      pres.showOtherLevels,
+      pres.otherLevelsLabel,
+      'secondary'
+    );
+    setBtn(
+      'res-btn-edit',
+      pres.showEditSetup,
+      pres.editSetupLabel,
+      'secondary'
+    );
+    setBtn('res-btn-menu', pres.showMainMenu, pres.mainMenuLabel, 'ghost');
   }
 
   /**
@@ -819,30 +1073,60 @@ export class SpatialUISystem extends createSystem({}) {
       this.interactionGuard.notifyPanelTransition(performance.now());
     }
 
+    const isOverlayMenu =
+      visibleSet.has('modal') ||
+      visibleSet.has('main-menu') ||
+      visibleSet.has('level-select') ||
+      visibleSet.has('settings') ||
+      visibleSet.has('instructions');
+    const keepActiveCallout =
+      !isOverlayMenu && performance.now() < this.calloutHideAt;
+    if (isOverlayMenu) {
+      this.calloutHideAt = 0;
+    }
+
+    this.isModalRequested = visibleSet.has('modal');
+    if (!visibleSet.has('hud')) {
+      this.hudAimSuspended = false;
+    }
+
     for (const [key, panel] of this.panels.entries()) {
-      const visible = visibleSet.has(key);
-      panel.asset.visible = visible;
-
-      const allowRay = visible && INTERACTIVE_PANELS.has(key);
-      const allowPoke = visible && POKE_ENABLED_PANELS.has(key);
-
-      if (allowRay) {
-        if (!panel.entity.hasComponent(RayInteractable)) {
-          panel.entity.addComponent(RayInteractable);
+      if (key === 'modal') continue;
+      const visible =
+        key === 'callout'
+          ? visibleSet.has('callout') || keepActiveCallout
+          : visibleSet.has(key);
+      if (key === 'hud' && visible && this.hudAimSuspended) {
+        panel.asset.visible = true;
+        if (panel.entity.hasComponent(RayInteractable)) {
+          panel.entity.removeComponent(RayInteractable);
         }
-      } else if (panel.entity.hasComponent(RayInteractable)) {
-        panel.entity.removeComponent(RayInteractable);
+        panel.asset.pointerEvents = 'none';
+      } else {
+        this.applyPanelInteractivity(key, panel, visible);
       }
+    }
 
-      if (allowPoke) {
-        if (!panel.entity.hasComponent(PokeInteractable)) {
-          panel.entity.addComponent(PokeInteractable);
-        }
-      } else if (panel.entity.hasComponent(PokeInteractable)) {
-        panel.entity.removeComponent(PokeInteractable);
+    this.syncModalPresentationMode();
+  }
+
+  /**
+   * Temporarily disables HUD raycasting while actively pulling the ball so
+   * pointer moves never raycast the entire 3D UIKitML HUD tree every frame.
+   */
+  setHudInteractiveDuringAim(interactive: boolean): void {
+    const nextSuspended = !interactive;
+    if (this.hudAimSuspended === nextSuspended) return;
+    this.hudAimSuspended = nextSuspended;
+    const hud = this.panels.get('hud');
+    if (!hud || !hud.asset.visible) return;
+    if (nextSuspended) {
+      if (hud.entity.hasComponent(RayInteractable)) {
+        hud.entity.removeComponent(RayInteractable);
       }
-
-      panel.asset.pointerEvents = allowRay ? 'auto' : 'none';
+      hud.asset.pointerEvents = 'none';
+    } else {
+      this.applyPanelInteractivity('hud', hud, true);
     }
   }
 
@@ -886,12 +1170,39 @@ export class SpatialUISystem extends createSystem({}) {
     );
   }
 
-  updateHudPower(power01: number, grabState: GrabState, canLaunch: boolean): void {
+  updateHudPower(
+    power01: number,
+    grabState: GrabState,
+    canLaunch: boolean,
+    readyPrompt = 'READY TO BOWL'
+  ): void {
+    const now = performance.now();
+    const stateChanged =
+      grabState !== this.lastHudGrabState ||
+      canLaunch !== this.lastHudCanLaunch;
+
+    // During active pulling (AIMING), throttle UIKitML text/bar updates to ~8Hz
+    // so dragging never triggers expensive Yoga flexbox + MSDF text rebuilds every frame.
+    if (
+      grabState === 'AIMING' &&
+      !stateChanged &&
+      now - this.lastHudAimUpdateAt < 120
+    ) {
+      return;
+    }
+
+    this.lastHudGrabState = grabState;
+    this.lastHudCanLaunch = canLaunch;
+    if (grabState === 'AIMING') {
+      this.lastHudAimUpdateAt = now;
+    }
+
     const pct = Math.round(power01 * 100);
+    const displayPct = Math.round(Math.max(0, Math.min(100, pct)) / 5) * 5;
     const text =
       grabState === 'AIMING'
         ? canLaunch
-          ? `POWER ${pct}% | RELEASE TO ROLL`
+          ? `POWER ${displayPct}% | RELEASE TO ROLL`
           : 'PULL BACK | B TO CANCEL'
         : grabState === 'HOVER'
           ? 'PINCH / TRIGGER TO GRAB'
@@ -899,17 +1210,24 @@ export class SpatialUISystem extends createSystem({}) {
             ? 'BALL ROLLING... (RESET IF STUCK)'
             : grabState === 'SETTLING'
               ? 'COUNTING PINS...'
-              : 'READY TO BOWL';
+              : readyPrompt;
 
     this.setText('hud', 'hud-power-text', text);
     this.setText('hud', 'hud-grab-state', grabState);
 
     const fillColor =
       power01 < 0.35 ? '#38bdf8' : power01 < 0.72 ? '#4ade80' : '#fb7185';
-    this.setProps('hud', 'hud-power-fill', {
-      width: `${Math.max(0, Math.min(100, pct))}%`,
-      backgroundColor: fillColor,
-    });
+    if (
+      displayPct !== this.lastPowerBarPct ||
+      fillColor !== this.lastPowerBarColor
+    ) {
+      this.lastPowerBarPct = displayPct;
+      this.lastPowerBarColor = fillColor;
+      this.setProps('hud', 'hud-power-fill', {
+        width: `${displayPct}%`,
+        backgroundColor: fillColor,
+      });
+    }
   }
 
   updateLevelSelect(progress: CampaignProgress): void {
@@ -959,6 +1277,10 @@ export class SpatialUISystem extends createSystem({}) {
       });
       this.setProps('level-select', `btn-lvl-${i}`, {
         backgroundColor: btnBg,
+        color: card.unlocked ? '#ffffff' : '#94a3b8',
+      });
+      this.setProps('level-select', `btn-lvl-label-${i}`, {
+        color: card.unlocked ? '#ffffff' : '#94a3b8',
       });
     }
   }
@@ -1121,6 +1443,11 @@ export class SpatialUISystem extends createSystem({}) {
     levelIndex = 0,
     unlockedLevelIndex = 0
   ): void {
+    this.activeModalMode = mode;
+    this.lastModalSummary = summary ?? null;
+    this.lastModalLevelIndex = levelIndex;
+    this.lastModalUnlockedIndex = unlockedLevelIndex;
+
     if (mode === 'PAUSE') {
       this.setText('modal', 'modal-eyebrow', 'GAME PAUSED');
       this.setProps('modal', 'modal-eyebrow', {color: '#38bdf8'});
@@ -1202,6 +1529,7 @@ export class SpatialUISystem extends createSystem({}) {
         color: '#f8fafc',
       });
       this.setText('modal', 'modal-main-menu-label', 'Main Menu');
+      this.syncModalPresentationMode();
       return;
     }
 
@@ -1290,6 +1618,7 @@ export class SpatialUISystem extends createSystem({}) {
       color: '#ffffff',
     });
     this.setText('modal', 'modal-next-label', pres.nextLevelLabel);
+    this.setProps('modal', 'modal-next-label', {color: '#ffffff'});
 
     this.setProps('modal', 'modal-play-again-btn', {
       display: pres.showPlayAgain ? 'flex' : 'none',
@@ -1297,6 +1626,7 @@ export class SpatialUISystem extends createSystem({}) {
       color: '#ffffff',
     });
     this.setText('modal', 'modal-play-again-label', pres.playAgainLabel);
+    this.setProps('modal', 'modal-play-again-label', {color: '#ffffff'});
 
     this.setProps('modal', 'modal-levels-btn', {
       display: pres.showOtherLevels ? 'flex' : 'none',
@@ -1304,6 +1634,7 @@ export class SpatialUISystem extends createSystem({}) {
       color: '#f8fafc',
     });
     this.setText('modal', 'modal-levels-label', pres.otherLevelsLabel);
+    this.setProps('modal', 'modal-levels-label', {color: '#f8fafc'});
 
     this.setProps('modal', 'modal-edit-setup-btn', {
       display: pres.showEditSetup ? 'flex' : 'none',
@@ -1311,6 +1642,7 @@ export class SpatialUISystem extends createSystem({}) {
       color: '#f8fafc',
     });
     this.setText('modal', 'modal-edit-setup-label', pres.editSetupLabel);
+    this.setProps('modal', 'modal-edit-setup-label', {color: '#f8fafc'});
 
     this.setProps('modal', 'modal-main-menu-btn', {
       display: pres.showMainMenu ? 'flex' : 'none',
@@ -1318,6 +1650,8 @@ export class SpatialUISystem extends createSystem({}) {
       color: '#f8fafc',
     });
     this.setText('modal', 'modal-main-menu-label', pres.mainMenuLabel);
+    this.setProps('modal', 'modal-main-menu-label', {color: '#f8fafc'});
+    this.syncModalPresentationMode();
   }
 
   showCallout(text: string, colorHex = '#fde047', durationMs = 2100): void {
@@ -1328,6 +1662,14 @@ export class SpatialUISystem extends createSystem({}) {
     this.setProps('callout', 'callout-text', {color: colorHex});
     panel.asset.visible = true;
     this.calloutHideAt = performance.now() + durationMs;
+  }
+
+  hideCallout(): void {
+    this.calloutHideAt = 0;
+    const panel = this.panels.get('callout');
+    if (panel) {
+      panel.asset.visible = false;
+    }
   }
 
   update(_delta: number): void {

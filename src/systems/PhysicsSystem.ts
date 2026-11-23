@@ -6,9 +6,9 @@ import type {DwarfRig} from '../geometry';
 import {BowlingWorld, type CollisionTag} from '../physics/BowlingWorld';
 import {ParticleBurstPool} from '../vfx';
 
-const FIXED_STEP = 1 / 90;
+const FIXED_STEP = 1 / 60;
 const MAX_FRAME_DT = 0.05;
-const MAX_SUBSTEPS = 5;
+const MAX_SUBSTEPS = 3;
 
 /**
  * IWSDK ECS System driving Rapier3D physics simulation, collision audio/VFX,
@@ -21,6 +21,7 @@ export class RolloxPhysicsSystem extends createSystem({}) {
 
   private accumulator = 0;
   private simulationActive = true;
+  private dynamicPhysicsActive = false;
   private ballDynamicSync = false;
   private dwarfRigs: DwarfRig[] = [];
   private simTime = 0;
@@ -97,10 +98,23 @@ export class RolloxPhysicsSystem extends createSystem({}) {
 
   setSimulationActive(active: boolean): void {
     this.simulationActive = active;
+    if (!active) {
+      this.accumulator = 0;
+    }
+  }
+
+  setDynamicPhysicsActive(active: boolean): void {
+    this.dynamicPhysicsActive = active;
+    if (!active) {
+      this.accumulator = 0;
+    }
   }
 
   setBallDynamicSync(dynamicSync: boolean): void {
     this.ballDynamicSync = dynamicSync;
+    if (!dynamicSync) {
+      this.accumulator = 0;
+    }
   }
 
   setArenaOrigin(origin: THREE.Vector3, yawRad = 0): void {
@@ -125,25 +139,41 @@ export class RolloxPhysicsSystem extends createSystem({}) {
     this.simTime += dt;
 
     // Animate dwarf legs & hammer swing in sync with patrol
-    const nowMs = performance.now();
-    for (const rig of this.dwarfRigs) {
-      const stride = Math.sin(this.simTime * 11) * 0.45;
-      rig.leftLeg.rotation.x = stride;
-      rig.rightLeg.rotation.x = -stride;
-      rig.hammerArm.rotation.x = Math.sin(this.simTime * 6) * 0.25;
-      if (nowMs < rig.hitFlashUntil) {
-        rig.root.scale.setScalar(1 + 0.14 * Math.sin(nowMs * 0.06));
-      } else {
-        rig.root.scale.setScalar(1);
+    if (this.dwarfRigs.length > 0) {
+      const nowMs = performance.now();
+      for (const rig of this.dwarfRigs) {
+        const stride = Math.sin(this.simTime * 11) * 0.45;
+        rig.leftLeg.rotation.x = stride;
+        rig.rightLeg.rotation.x = -stride;
+        rig.hammerArm.rotation.x = Math.sin(this.simTime * 6) * 0.25;
+        if (nowMs < rig.hitFlashUntil) {
+          rig.root.scale.setScalar(1 + 0.14 * Math.sin(nowMs * 0.06));
+        } else {
+          rig.root.scale.setScalar(1);
+        }
       }
     }
 
-    this.accumulator += dt;
+    // While idle / aiming between shots, skip full Rapier3D dynamic stepping completely
+    // and only animate kinematic obstacles once per frame to prevent lag.
+    if (!this.dynamicPhysicsActive && !this.ballDynamicSync) {
+      this.bowlingWorld.stepObstaclesOnly(dt);
+      return;
+    }
+
+    this.accumulator = Math.min(
+      this.accumulator + dt,
+      FIXED_STEP * MAX_SUBSTEPS
+    );
     let steps = 0;
     while (this.accumulator >= FIXED_STEP && steps < MAX_SUBSTEPS) {
       this.bowlingWorld.step(FIXED_STEP, this.ballDynamicSync);
       this.accumulator -= FIXED_STEP;
       steps++;
+    }
+    if (steps >= MAX_SUBSTEPS && this.accumulator >= FIXED_STEP) {
+      // Drop excess backlog instead of spiraling into permanent lag
+      this.accumulator = 0;
     }
 
     if (this.ballDynamicSync) {

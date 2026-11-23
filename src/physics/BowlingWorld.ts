@@ -21,7 +21,7 @@ export type CollisionTag =
 
 export interface PhysicsPinEntity {
   index: number;
-  body: RAPIER.RigidBody;
+  body: RAPIER.RigidBody | null;
   colliderHandles: number[];
   mesh: THREE.Object3D | null;
   fallen: boolean;
@@ -211,7 +211,7 @@ export class BowlingWorld {
         pin.localInitialPos.z,
         pin.initialPos
       );
-      if (pin.fallen) continue;
+      if (pin.fallen || !pin.body) continue;
       const t = pin.body.translation();
       const r = pin.body.rotation();
       _tmpVec.set(t.x, t.y, t.z).sub(oldOffset).applyQuaternion(oldInvQuat);
@@ -726,6 +726,9 @@ export class BowlingWorld {
 
   resetBallToPedestal(localPos: THREE.Vector3): void {
     this.createOrResetBall(localPos);
+    if (this.eventQueue) {
+      this.eventQueue.clear();
+    }
     if (this.ballMesh) {
       this.ballMesh.position.copy(localPos);
       this.ballMesh.quaternion.identity();
@@ -734,7 +737,7 @@ export class BowlingWorld {
 
   resetStandingPins(): void {
     for (const pin of this.pins) {
-      if (pin.fallen) continue;
+      if (pin.fallen || !pin.body) continue;
       pin.body.setTranslation(
         {
           x: pin.initialPos.x,
@@ -743,16 +746,35 @@ export class BowlingWorld {
         },
         true
       );
-      pin.body.setRotation({x: 0, y: 0, z: 0, w: 1}, true);
+      pin.body.setRotation(
+        {
+          x: this.arenaQuat.x,
+          y: this.arenaQuat.y,
+          z: this.arenaQuat.z,
+          w: this.arenaQuat.w,
+        },
+        true
+      );
       pin.body.setLinvel({x: 0, y: 0, z: 0}, true);
       pin.body.setAngvel({x: 0, y: 0, z: 0}, true);
+      if (pin.mesh) {
+        pin.mesh.position.copy(pin.localInitialPos);
+        pin.mesh.quaternion.identity();
+      }
     }
   }
 
   hideFallenPins(): void {
     for (const pin of this.pins) {
       if (!pin.fallen) continue;
-      pin.body.setEnabled(false);
+      if (pin.body && this.world) {
+        for (const h of pin.colliderHandles) {
+          this.colliderTags.delete(h);
+        }
+        this.world.removeRigidBody(pin.body);
+        pin.body = null;
+        pin.colliderHandles = [];
+      }
       if (pin.mesh) pin.mesh.visible = false;
     }
   }
@@ -767,13 +789,16 @@ export class BowlingWorld {
   }
 
   /**
-   * Advances obstacles + Rapier world one fixed timestep and synchronizes Three.js
-   * object transforms and collision events.
+   * Advances ONLY kinematic obstacles (meshes + kinematic targets) without stepping
+   * the Rapier3D dynamic solver. Used during READY / AIMING / WORKSHOP so idle states
+   * have near-zero physics CPU cost while obstacles stay smoothly animated.
    */
-  step(dt: number, isBallDynamicSync: boolean): void {
-    if (!this.world) return;
-    this.world.timestep = dt;
+  stepObstaclesOnly(dt: number): void {
+    if (!this.world || this.obstacles.length === 0) return;
+    this.advanceObstacles(dt, false);
+  }
 
+  private advanceObstacles(dt: number, useNextKinematic: boolean): void {
     for (const obs of this.obstacles) {
       const spd = obs.spec.speed ?? 1.8;
       obs.phase += dt * spd;
@@ -788,15 +813,15 @@ export class BowlingWorld {
         const ny = obs.baseWorldPos.y;
         const nz = obs.baseWorldPos.z + axisZ * offsetX;
         obs.currentWorldPos.set(nx, ny, nz);
-        obs.body.setNextKinematicTranslation({x: nx, y: ny + 0.062, z: nz});
         _euler.set(0, obsYaw, 0);
         _quat.setFromEuler(_euler);
-        obs.body.setNextKinematicRotation({
-          x: _quat.x,
-          y: _quat.y,
-          z: _quat.z,
-          w: _quat.w,
-        });
+        if (useNextKinematic) {
+          obs.body.setNextKinematicTranslation({x: nx, y: ny + 0.062, z: nz});
+          obs.body.setNextKinematicRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w});
+        } else {
+          obs.body.setTranslation({x: nx, y: ny + 0.062, z: nz}, false);
+          obs.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+        }
         if (obs.mesh) {
           const dirSign = Math.cos(obs.phase) >= 0 ? 1 : -1;
           const localObsYaw = obs.spec.yawY ?? 0;
@@ -813,34 +838,28 @@ export class BowlingWorld {
         const angle = obsYaw + obs.phase;
         _euler.set(0, angle, 0);
         _quat.setFromEuler(_euler);
-        obs.body.setNextKinematicRotation({
-          x: _quat.x,
-          y: _quat.y,
-          z: _quat.z,
-          w: _quat.w,
-        });
+        if (useNextKinematic) {
+          obs.body.setNextKinematicRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w});
+        } else {
+          obs.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+        }
         if (obs.mesh) {
           obs.mesh.position.set(obs.spec.x, obs.spec.y, obs.spec.z);
           obs.mesh.rotation.set(0, (obs.spec.yawY ?? 0) + obs.phase, 0, 'YXZ');
         }
       } else if (obs.spec.kind === 'movingGate') {
-        // Predictable sinusoidal portcullis rise & lower
         const lift = (Math.sin(obs.phase) * 0.5 + 0.5) * 0.095;
         const ny = obs.baseWorldPos.y + 0.025 + lift;
         obs.currentWorldPos.set(obs.baseWorldPos.x, ny, obs.baseWorldPos.z);
-        obs.body.setNextKinematicTranslation({
-          x: obs.baseWorldPos.x,
-          y: ny,
-          z: obs.baseWorldPos.z,
-        });
         _euler.set(0, obsYaw, 0);
         _quat.setFromEuler(_euler);
-        obs.body.setNextKinematicRotation({
-          x: _quat.x,
-          y: _quat.y,
-          z: _quat.z,
-          w: _quat.w,
-        });
+        if (useNextKinematic) {
+          obs.body.setNextKinematicTranslation({x: obs.baseWorldPos.x, y: ny, z: obs.baseWorldPos.z});
+          obs.body.setNextKinematicRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w});
+        } else {
+          obs.body.setTranslation({x: obs.baseWorldPos.x, y: ny, z: obs.baseWorldPos.z}, false);
+          obs.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+        }
         if (obs.mesh) {
           obs.mesh.position.set(obs.spec.x, obs.spec.y, obs.spec.z);
           obs.mesh.rotation.set(0, obs.spec.yawY ?? 0, 0, 'YXZ');
@@ -849,25 +868,20 @@ export class BowlingWorld {
           obs.gateBarMesh.position.y = 0.025 + lift;
         }
       } else {
-        // slidingBarrier
         const range = obs.spec.patrolRadius ?? 0.13;
         const offsetX = Math.sin(obs.phase) * range;
         const nx = obs.baseWorldPos.x + axisX * offsetX;
         const nz = obs.baseWorldPos.z + axisZ * offsetX;
         obs.currentWorldPos.set(nx, obs.baseWorldPos.y, nz);
-        obs.body.setNextKinematicTranslation({
-          x: nx,
-          y: obs.baseWorldPos.y + 0.032,
-          z: nz,
-        });
         _euler.set(0, obsYaw, 0);
         _quat.setFromEuler(_euler);
-        obs.body.setNextKinematicRotation({
-          x: _quat.x,
-          y: _quat.y,
-          z: _quat.z,
-          w: _quat.w,
-        });
+        if (useNextKinematic) {
+          obs.body.setNextKinematicTranslation({x: nx, y: obs.baseWorldPos.y + 0.032, z: nz});
+          obs.body.setNextKinematicRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w});
+        } else {
+          obs.body.setTranslation({x: nx, y: obs.baseWorldPos.y + 0.032, z: nz}, false);
+          obs.body.setRotation({x: _quat.x, y: _quat.y, z: _quat.z, w: _quat.w}, false);
+        }
         if (obs.mesh) {
           const localObsYaw = obs.spec.yawY ?? 0;
           const localAxisX = Math.cos(localObsYaw);
@@ -881,6 +895,17 @@ export class BowlingWorld {
         }
       }
     }
+  }
+
+  /**
+   * Advances obstacles + Rapier world one fixed timestep and synchronizes Three.js
+   * object transforms and collision events.
+   */
+  step(dt: number, isBallDynamicSync: boolean): void {
+    if (!this.world) return;
+    this.world.timestep = dt;
+
+    this.advanceObstacles(dt, true);
 
     if (this.eventQueue) {
       this.world.step(this.eventQueue);
@@ -895,7 +920,7 @@ export class BowlingWorld {
     }
 
     for (const pin of this.pins) {
-      if (!pin.body.isEnabled() || !pin.mesh) continue;
+      if (pin.fallen || !pin.body || !pin.mesh) continue;
       const t = pin.body.translation();
       const r = pin.body.rotation();
       this.syncMeshFromWorldPose(pin.mesh, t.x, t.y, t.z, r.x, r.y, r.z, r.w);
@@ -945,7 +970,7 @@ export class BowlingWorld {
             const pin = this.pins.find((p) =>
               p.colliderHandles.includes(tag1 === 'pin' ? h1 : h2)
             );
-            if (pin) {
+            if (pin && pin.body) {
               const pt = pin.body.translation();
               _tmpVec.set(pt.x, pt.y, pt.z);
             }
@@ -971,7 +996,7 @@ export class BowlingWorld {
     let anyPinMoving = false;
 
     for (const pin of this.pins) {
-      if (pin.fallen) {
+      if (pin.fallen || !pin.body) {
         totalFallen++;
         continue;
       }
@@ -989,11 +1014,13 @@ export class BowlingWorld {
         anyPinMoving = true;
       }
 
-      const tippedOver = _pinUp.y < 0.68;
+      const tippedOver = _pinUp.y < 0.8;
       const droppedOffDeck = t.y < pin.initialPos.y - 0.14;
+      const pushedOffSpot =
+        Math.hypot(t.x - pin.initialPos.x, t.z - pin.initialPos.z) > 0.24;
       const fellOffTable = t.y < minYThreshold;
 
-      if (tippedOver || droppedOffDeck || fellOffTable) {
+      if (tippedOver || droppedOffDeck || pushedOffSpot || fellOffTable) {
         pin.fallen = true;
         newlyFallen++;
         totalFallen++;
@@ -1018,7 +1045,9 @@ export class BowlingWorld {
     }
 
     for (const pin of this.pins) {
-      this.world.removeRigidBody(pin.body);
+      if (pin.body) {
+        this.world.removeRigidBody(pin.body);
+      }
     }
     this.pins = [];
 
@@ -1030,6 +1059,9 @@ export class BowlingWorld {
     this.colliderTags.clear();
     if (this.groundColliderHandle !== null) {
       this.colliderTags.set(this.groundColliderHandle, 'ground');
+    }
+    if (this.eventQueue) {
+      this.eventQueue.clear();
     }
   }
 

@@ -1,13 +1,21 @@
 import {AssetType, defineAssets} from '@iwsdk/core';
+import uikitmlSources from 'virtual:rollox-uikitml';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
-const uikitml = (fileName: string, name: string) => ({
-  url: publicAssetUrl(`ui/${fileName}`),
-  type: AssetType.UIKitML,
-  name,
-});
+const uikitml = (fileName: string, name: string) => {
+  const bundledSource = uikitmlSources[fileName];
+  const url =
+    typeof bundledSource === 'string' && bundledSource.length > 0
+      ? `data:text/plain;charset=utf-8,${encodeURIComponent(bundledSource)}`
+      : publicAssetUrl(`ui/${fileName}`);
+  return {
+    url,
+    type: AssetType.UIKitML,
+    name,
+  };
+};
 
 export default defineAssets({
   'main-menu-panel': uikitml('main-menu.uikitml', 'Main Menu Panel'),

@@ -143,12 +143,19 @@ export function buildResultsPresentation(params: {
 }): ResultsPresentation {
   const {summary, levelIndex, totalLevels} = params;
   if (summary.isCustomWorkshop) {
+    const customCleared = summary.stars > 0;
     return {
-      eyebrow: 'CUSTOM GAME COMPLETE',
+      eyebrow: customCleared ? 'CUSTOM GAME COMPLETE' : 'CUSTOM ALLEY - TRY AGAIN',
       levelLabel: `Custom Game: ${summary.levelName}`,
-      title: summary.callout,
-      bannerText: `Custom lane finished in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}.`,
-      bannerTone: 'success',
+      title: customCleared
+        ? summary.callout
+        : summary.pinsKnocked === 0
+          ? 'NO PINS KNOCKED'
+          : 'ALMOST THERE!',
+      bannerText: customCleared
+        ? `Custom lane finished in ${summary.shotsUsed} ${summary.shotsUsed === 1 ? 'shot' : 'shots'}.`
+        : 'Try another run or tweak your custom lane in Edit Setup!',
+      bannerTone: customCleared ? 'success' : 'warning',
       showBanner: true,
       hasNextLevel: false,
       isCampaignComplete: false,
@@ -157,12 +164,12 @@ export function buildResultsPresentation(params: {
       showOtherLevels: false,
       showEditSetup: true,
       showMainMenu: true,
-      playAgainLabel: 'Play Again',
+      playAgainLabel: customCleared ? 'Play Again' : 'Try Again',
       nextLevelLabel: 'Next Level',
       otherLevelsLabel: 'Other Levels',
       editSetupLabel: 'Edit Setup',
       mainMenuLabel: 'Main Menu',
-      primaryLabel: 'Play Again',
+      primaryLabel: customCleared ? 'Play Again' : 'Try Again',
       secondaryLabel: 'Edit Setup',
       tertiaryLabel: 'Main Menu',
     };

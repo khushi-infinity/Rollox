@@ -82,6 +82,34 @@ describe('RolloxStateMachine', () => {
     expect(sm.transitionGame('RESULT')).toBe(true);
     expect(sm.transitionGame('WORKSHOP')).toBe(true);
   });
+
+  it('allows entering RESULT safely from any active play state and recovering forward or back', () => {
+    for (const activeState of [
+      'READY',
+      'AIMING',
+      'BALL_IN_MOTION',
+      'SETTLING',
+      'ONBOARDING',
+    ] as const) {
+      const sm = new RolloxStateMachine();
+      expect(sm.transitionGame('MAIN_MENU')).toBe(true);
+      if (activeState === 'ONBOARDING') {
+        expect(sm.transitionGame('ONBOARDING')).toBe(true);
+      } else {
+        expect(sm.transitionGame('READY')).toBe(true);
+        if (activeState !== 'READY') {
+          expect(sm.transitionGame(activeState)).toBe(true);
+        }
+      }
+      expect(sm.transitionGame('RESULT')).toBe(true);
+      // Forward/back recovery options from RESULT must never deadlock
+      expect(sm.canTransitionGame('READY')).toBe(true);
+      expect(sm.canTransitionGame('LEVEL_SELECT')).toBe(true);
+      expect(sm.canTransitionGame('MAIN_MENU')).toBe(true);
+      expect(sm.canTransitionGame('WORKSHOP')).toBe(true);
+      expect(sm.canTransitionGame('WORKSHOP_TEST')).toBe(true);
+    }
+  });
 });
 
 describe('Launch Physics & Curves', () => {
@@ -436,5 +464,23 @@ describe('Menu Interaction Stability, Level Locks & Results Presentation', () =>
     expect(customPres.primaryLabel).toBe('Play Again');
     expect(customPres.secondaryLabel).toBe('Edit Setup');
     expect(customPres.tertiaryLabel).toBe('Main Menu');
+
+    const failedCustomPres = buildResultsPresentation({
+      summary: {
+        ...lvl1Summary,
+        isCustomWorkshop: true,
+        stars: 0,
+        pinsKnocked: 2,
+        callout: '+2 PINS!',
+      },
+      levelIndex: 0,
+      totalLevels: 5,
+    });
+    expect(failedCustomPres.eyebrow).toBe('CUSTOM ALLEY - TRY AGAIN');
+    expect(failedCustomPres.title).toBe('ALMOST THERE!');
+    expect(failedCustomPres.bannerTone).toBe('warning');
+    expect(failedCustomPres.playAgainLabel).toBe('Try Again');
+    expect(failedCustomPres.showEditSetup).toBe(true);
+    expect(failedCustomPres.showMainMenu).toBe(true);
   });
 });

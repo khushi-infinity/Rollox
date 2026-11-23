@@ -78,6 +78,8 @@
     padding-top: 12px;
     padding-bottom: 12px;
     justify-content: center;
+    background-color: #1e293b;
+    color: #f8fafc;
   }
   .primary-btn {
     width: 100%;
@@ -85,6 +87,7 @@
     padding-bottom: 14px;
     justify-content: center;
     background-color: #0284c7;
+    color: #ffffff;
   }
   .custom-btn {
     width: 100%;
@@ -92,6 +95,10 @@
     padding-bottom: 12px;
     justify-content: center;
     background-color: #b45309;
+    color: #ffffff;
+  }
+  .btn-text-light {
+    color: #f8fafc;
   }
 </style>
 <Panel class="menu-root">
@@ -113,19 +120,19 @@
   <div class="menu-actions">
     <Button id="btn-play" class="primary-btn">
       <ButtonIcon><Play></Play></ButtonIcon>
-      <ButtonLabel>PLAY</ButtonLabel>
+      <ButtonLabel class="btn-text-light">PLAY</ButtonLabel>
     </Button>
     <Button id="btn-custom-game" class="custom-btn">
       <ButtonIcon><Wrench></Wrench></ButtonIcon>
-      <ButtonLabel>CUSTOM GAME</ButtonLabel>
+      <ButtonLabel class="btn-text-light">CUSTOM GAME</ButtonLabel>
     </Button>
     <Button id="btn-settings" class="menu-btn">
       <ButtonIcon><Settings></Settings></ButtonIcon>
-      <ButtonLabel>SETTINGS</ButtonLabel>
+      <ButtonLabel class="btn-text-light">SETTINGS</ButtonLabel>
     </Button>
     <Button id="btn-menu-xr" class="menu-btn">
       <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
-      <ButtonLabel id="btn-menu-xr-label">ENTER MIXED REALITY</ButtonLabel>
+      <ButtonLabel id="btn-menu-xr-label" class="btn-text-light">ENTER MIXED REALITY</ButtonLabel>
     </Button>
   </div>
 </Panel>

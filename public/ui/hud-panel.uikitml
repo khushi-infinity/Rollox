@@ -72,9 +72,9 @@
   }
   .power-text {
     color: #7dd3fc;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
-    width: 180px;
+    width: 320px;
   }
   .bar-track {
     flex-grow: 1;
@@ -94,12 +94,12 @@
     color: #e2e8f0;
     font-size: 12px;
     font-weight: 600;
-    width: 110px;
+    width: 96px;
     text-align: right;
   }
   .actions-row {
     flex-direction: row;
-    gap: 10px;
+    gap: 8px;
     justify-content: space-between;
   }
   .hud-btn {
@@ -141,6 +141,10 @@
     <Button id="hud-reset-ball" class="hud-btn">
       <ButtonIcon><RotateCcw></RotateCcw></ButtonIcon>
       <ButtonLabel>Reset Ball</ButtonLabel>
+    </Button>
+    <Button id="hud-retry-level" class="hud-btn">
+      <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+      <ButtonLabel>Retry</ButtonLabel>
     </Button>
     <Button id="hud-recenter" class="hud-btn">
       <ButtonIcon><Crosshair></Crosshair></ButtonIcon>

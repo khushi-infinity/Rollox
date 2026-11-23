@@ -323,15 +323,73 @@ describe('Rapier3D BowlingWorld Physics Audit', () => {
 
     for (const p of bw.pins) {
       if (p.fallen) {
-        expect(p.body.isEnabled()).toBe(false);
+        expect(p.body).toBeNull();
         expect(p.mesh?.visible).toBe(false);
       } else {
-        expect(p.body.isEnabled()).toBe(true);
-        expect(p.body.translation().y).toBeCloseTo(p.initialPos.y, 3);
+        expect(p.body).not.toBeNull();
+        expect(p.body!.isEnabled()).toBe(true);
+        expect(p.body!.translation().y).toBeCloseTo(p.initialPos.y, 3);
       }
     }
     const resetBall = bw.getBallWorldState(new THREE.Vector3());
     expect(resetBall.speed).toBe(0);
     expect(resetBall.z).toBeCloseTo(arenaOrigin.z, 3);
+  });
+
+  it('completes Shot 2 and Shot 3 cleanly without Rapier WASM panics when pins remain after Shot 1', async () => {
+    const bw = new BowlingWorld();
+    worlds.push(bw);
+    await bw.init();
+    bw.setGroundPlaneCollisionMesh(makeGroundMesh());
+    const arenaOrigin = new THREE.Vector3(0, 0.94, -0.48);
+    bw.setArenaOffset(arenaOrigin, 0);
+
+    for (const levelIdx of [0, 2]) {
+      const level = CAMPAIGN_LEVELS[levelIdx];
+      bw.buildLevelPhysics(
+        level,
+        new THREE.Group(),
+        Array.from({length: 10}, () => new THREE.Group()),
+        makeObstacleVisuals(level)
+      );
+
+      // Shot 1: angled slightly off-center so some pins fall and some remain standing
+      bw.launchBall(
+        new THREE.Vector3(arenaOrigin.x + 0.045, arenaOrigin.y + BALL_RADIUS, arenaOrigin.z),
+        new THREE.Vector3(0.05, 0, levelIdx === 2 ? -3.4 : -2.7),
+        new THREE.Vector3(0, 0, 0)
+      );
+      stepSeconds(bw, 1.5);
+      const afterShot1 = bw.evaluateFallenPins(arenaOrigin.y - 0.25);
+      expect(afterShot1.totalFallen).toBeGreaterThan(0);
+
+      bw.hideFallenPins();
+      bw.resetStandingPins();
+      bw.resetBallToPedestal(new THREE.Vector3(0, BALL_RADIUS, 0));
+
+      // Shot 2: must step cleanly without Rapier3D IslandManager unreachable panics
+      bw.launchBall(
+        new THREE.Vector3(arenaOrigin.x - 0.03, arenaOrigin.y + BALL_RADIUS, arenaOrigin.z),
+        new THREE.Vector3(0, 0, levelIdx === 2 ? -3.6 : -2.9),
+        new THREE.Vector3(0, 0, 0)
+      );
+      stepSeconds(bw, 1.5);
+      const afterShot2 = bw.evaluateFallenPins(arenaOrigin.y - 0.25);
+      expect(afterShot2.totalFallen).toBeGreaterThanOrEqual(afterShot1.totalFallen);
+
+      bw.hideFallenPins();
+      bw.resetStandingPins();
+      bw.resetBallToPedestal(new THREE.Vector3(0, BALL_RADIUS, 0));
+
+      // Shot 3: still steps cleanly
+      bw.launchBall(
+        new THREE.Vector3(arenaOrigin.x, arenaOrigin.y + BALL_RADIUS, arenaOrigin.z),
+        new THREE.Vector3(0, 0, levelIdx === 2 ? -3.6 : -3.1),
+        new THREE.Vector3(0, 0, 0)
+      );
+      stepSeconds(bw, 1.2);
+      const afterShot3 = bw.evaluateFallenPins(arenaOrigin.y - 0.25);
+      expect(afterShot3.totalFallen).toBeGreaterThanOrEqual(afterShot2.totalFallen);
+    }
   });
 });

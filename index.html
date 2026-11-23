@@ -27,6 +27,64 @@
   </head>
   <body>
     <div id="scene-container"></div>
+    <div
+      id="rollox-result-overlay"
+      class="result-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="res-title"
+      data-tone="success"
+    >
+      <div class="result-card">
+        <div id="res-eyebrow" class="result-eyebrow">LEVEL COMPLETED!</div>
+        <div id="res-level-name" class="result-level-name">Level 1: Meadow Straight</div>
+        <h2 id="res-title" class="result-title">STRIKE! +50 BONUS</h2>
+        <div id="res-stars" class="result-stars" aria-label="Star rating">★★★ (3 / 3 STARS)</div>
+        <div id="res-banner" class="result-banner">Level cleared — next challenge unlocked!</div>
+        <p id="res-summary" class="result-summary">Clean sweep in 1 shot!</p>
+
+        <div class="result-stats">
+          <div class="result-stat">
+            <span class="result-stat-label">PINS KNOCKED</span>
+            <span id="res-pins-val" class="result-stat-val">10 / 10</span>
+          </div>
+          <div class="result-stat">
+            <span class="result-stat-label">FINAL SCORE</span>
+            <span id="res-score-val" class="result-stat-val">150</span>
+          </div>
+          <div class="result-stat">
+            <span id="res-best-label" class="result-stat-label">BEST SCORE</span>
+            <span id="res-best-val" class="result-stat-val">150</span>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button id="res-btn-resume" class="result-btn result-btn-primary hidden" type="button">
+            Resume Game
+          </button>
+          <button id="res-btn-next" class="result-btn result-btn-primary hidden" type="button">
+            Next Level →
+          </button>
+          <button id="res-btn-retry" class="result-btn result-btn-secondary" type="button">
+            Play Again
+          </button>
+          <div class="result-actions-row">
+            <button id="res-btn-levels" class="result-btn result-btn-secondary" type="button">
+              Other Levels
+            </button>
+            <button id="res-btn-edit" class="result-btn result-btn-secondary hidden" type="button">
+              Edit Setup
+            </button>
+            <button id="res-btn-settings" class="result-btn result-btn-secondary hidden" type="button">
+              Settings
+            </button>
+            <button id="res-btn-menu" class="result-btn result-btn-ghost" type="button">
+              Main Menu
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="xr-entry-dock" aria-label="Mixed Reality Controls">
       <div class="dock-brand">
         <div class="dock-brand-row">
